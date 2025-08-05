@@ -151,4 +151,4 @@ This project is created for educational purposes as part of a university degree 
 
 ## Support
 
-For questions or issues related to this project, please refer to the project documentation or contact the development team. 
+For questions or issues related to this project, please refer to the project documentation.
