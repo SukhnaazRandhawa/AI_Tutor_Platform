@@ -10,6 +10,7 @@ dotenv.config();
 
 // Import routes (we'll create these next)
 import authRoutes from './routes/auth';
+import avatarRoutes from './routes/avatar';
 import sessionRoutes from './routes/session';
 import userRoutes from './routes/user';
 import voiceRoutes from './routes/voice';
@@ -51,6 +52,7 @@ app.get('/', (req, res) => {
       authentication: true,
       sessions: true,
       voice: true,
+      avatar: true,
       ai: true
     }
   });
@@ -61,6 +63,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/session', sessionRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/avatar', avatarRoutes);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
@@ -101,6 +104,43 @@ io.on('connection', (socket) => {
       sessionId: data.sessionId
     });
   });
+
+  // Avatar video events
+  socket.on('avatar-start', (data) => {
+    console.log(`Avatar session started for user ${socket.id}`);
+    socket.broadcast.to(data.sessionId).emit('avatar-started', {
+      userId: socket.id,
+      sessionId: data.sessionId,
+      avatarConfig: data.avatarConfig
+    });
+  });
+
+  socket.on('avatar-video-ready', (data) => {
+    console.log(`Avatar video ready for user ${socket.id}`);
+    socket.broadcast.to(data.sessionId).emit('avatar-video-available', {
+      userId: socket.id,
+      sessionId: data.sessionId,
+      videoUrl: data.videoUrl,
+      videoId: data.videoId
+    });
+  });
+
+  socket.on('avatar-stream', (data) => {
+    // Handle real-time avatar video streaming
+    socket.broadcast.to(data.sessionId).emit('avatar-stream-received', {
+      videoData: data.videoData,
+      userId: socket.id,
+      timestamp: Date.now()
+    });
+  });
+
+  socket.on('avatar-end', (data) => {
+    console.log(`Avatar session ended for user ${socket.id}`);
+    socket.broadcast.to(data.sessionId).emit('avatar-ended', {
+      userId: socket.id,
+      sessionId: data.sessionId
+    });
+  });
   
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
@@ -123,7 +163,7 @@ const startServer = async () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`API available at http://localhost:${PORT}`);
       console.log(`Frontend should run on ${process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
-      console.log('Features enabled: Authentication, Sessions, Voice Processing, AI Integration');
+      console.log('Features enabled: Authentication, Sessions, Voice Processing, Avatar Generation, AI Integration');
     });
   } catch (error) {
     console.error('Failed to start server:', error);
