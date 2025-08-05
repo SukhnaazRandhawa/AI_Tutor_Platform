@@ -12,6 +12,7 @@ dotenv.config();
 import authRoutes from './routes/auth';
 import sessionRoutes from './routes/session';
 import userRoutes from './routes/user';
+import voiceRoutes from './routes/voice';
 
 // Import middleware
 import { errorHandler } from './middleware/errorHandler';
@@ -29,7 +30,7 @@ const io = new Server(server, {
   }
 });
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 // Middleware
 app.use(helmet());
@@ -45,7 +46,13 @@ app.get('/', (req, res) => {
   res.json({ 
     message: 'AI Tutor API is running!',
     version: '1.0.0',
-    status: 'active'
+    status: 'active',
+    features: {
+      authentication: true,
+      sessions: true,
+      voice: true,
+      ai: true
+    }
   });
 });
 
@@ -53,6 +60,7 @@ app.get('/', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/session', sessionRoutes);
+app.use('/api/voice', voiceRoutes);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {
@@ -66,6 +74,32 @@ io.on('connection', (socket) => {
   socket.on('send-message', (data) => {
     // Handle real-time messaging
     io.to(data.sessionId).emit('new-message', data);
+  });
+
+  // Voice communication events
+  socket.on('voice-start', (data) => {
+    console.log(`Voice session started for user ${socket.id}`);
+    socket.broadcast.to(data.sessionId).emit('voice-started', {
+      userId: socket.id,
+      sessionId: data.sessionId
+    });
+  });
+
+  socket.on('voice-data', (data) => {
+    // Handle real-time voice data
+    socket.broadcast.to(data.sessionId).emit('voice-received', {
+      audioData: data.audioData,
+      userId: socket.id,
+      timestamp: Date.now()
+    });
+  });
+
+  socket.on('voice-end', (data) => {
+    console.log(`Voice session ended for user ${socket.id}`);
+    socket.broadcast.to(data.sessionId).emit('voice-ended', {
+      userId: socket.id,
+      sessionId: data.sessionId
+    });
   });
   
   socket.on('disconnect', () => {
@@ -89,6 +123,7 @@ const startServer = async () => {
       console.log(`Server running on port ${PORT}`);
       console.log(`API available at http://localhost:${PORT}`);
       console.log(`Frontend should run on ${process.env.CORS_ORIGIN || 'http://localhost:3000'}`);
+      console.log('Features enabled: Authentication, Sessions, Voice Processing, AI Integration');
     });
   } catch (error) {
     console.error('Failed to start server:', error);
