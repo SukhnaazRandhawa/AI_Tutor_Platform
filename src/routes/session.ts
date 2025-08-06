@@ -261,6 +261,49 @@ router.put('/end', authenticate, async (req: AuthRequest, res: Response): Promis
   }
 });
 
+// @route   DELETE /api/session/clear-active
+// @desc    Clear all active sessions for the user (utility route)
+// @access  Private
+router.delete('/clear-active', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const user = req.user;
+
+    // Find and end all active sessions for this user
+    const activeSessions = await Session.find({
+      userId: user._id,
+      status: 'active'
+    });
+
+    if (activeSessions.length === 0) {
+      res.json({
+        success: true,
+        message: 'No active sessions found'
+      });
+      return;
+    }
+
+    // End all active sessions
+    for (const session of activeSessions) {
+      session.status = 'ended';
+      session.endTime = new Date();
+      await session.save();
+    }
+
+    res.json({
+      success: true,
+      message: `Cleared ${activeSessions.length} active session(s)`,
+      clearedCount: activeSessions.length
+    });
+
+  } catch (error) {
+    console.error('Clear active sessions error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Server error during session cleanup'
+    });
+  }
+});
+
 // @route   GET /api/session/history
 // @desc    Get user's session history
 // @access  Private
