@@ -71,7 +71,9 @@ export const sessionAPI = {
   getActiveSession: () => api.get('/api/session/active'),
 
   endSession: (sessionId: string) =>
-    api.post('/api/session/end', { sessionId }),
+    api.put('/api/session/end', { sessionId }),
+
+  clearActiveSessions: () => api.delete('/api/session/clear-active'),
 
   getSessionHistory: () => api.get('/api/session/history'),
 };

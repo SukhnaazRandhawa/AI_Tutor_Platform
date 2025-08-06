@@ -43,6 +43,16 @@ export default function Dashboard() {
     navigate('/login');
   };
 
+  const handleClearSessions = async () => {
+    try {
+      await sessionAPI.clearActiveSessions();
+      toast.success('Active sessions cleared successfully');
+    } catch (error: any) {
+      const message = error.response?.data?.error || 'Failed to clear sessions';
+      toast.error(message);
+    }
+  };
+
   const quickSubjects = [
     { name: 'Mathematics', icon: '🔢', color: 'from-blue-500 to-blue-600' },
     { name: 'Science', icon: '🔬', color: 'from-green-500 to-green-600' },
@@ -87,6 +97,13 @@ export default function Dashboard() {
                     >
                       <Settings className="h-4 w-4" />
                       <span>Settings</span>
+                    </button>
+                    <button
+                      onClick={handleClearSessions}
+                      className="w-full px-4 py-2 text-left text-sm text-orange-600 hover:bg-orange-50 flex items-center space-x-2"
+                    >
+                      <Settings className="h-4 w-4" />
+                      <span>Clear Sessions</span>
                     </button>
                     <button
                       onClick={handleLogout}
