@@ -276,7 +276,7 @@ class AvatarService {
           
           try {
             const statusResponse = await axios.get(
-              `https://api.heygen.com/v2/video/status?video_id=${videoId}`,
+              `https://api.heygen.com/v2/video/status/${videoId}`,
               {
                 headers: {
                   'X-Api-Key': this.heygenApiKey,

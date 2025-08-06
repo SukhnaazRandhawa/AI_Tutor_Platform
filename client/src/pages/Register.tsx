@@ -93,6 +93,7 @@ export default function Register() {
             type="text"
             className="input-field pl-10"
             placeholder="Enter your full name"
+            autoComplete="name"
           />
         </div>
         {errors.name && (
@@ -116,7 +117,7 @@ export default function Register() {
           >
             <option value="">Select your preferred language</option>
             {languages.map((lang) => (
-              <option key={lang.code} value={lang.code}>
+              <option key={lang.code} value={lang.name}>
                 {lang.name}
               </option>
             ))}
@@ -165,6 +166,7 @@ export default function Register() {
             type="email"
             className="input-field pl-10"
             placeholder="Enter your email"
+            autoComplete="email"
           />
         </div>
         {errors.email && (
@@ -191,6 +193,7 @@ export default function Register() {
             type={showPassword ? 'text' : 'password'}
             className="input-field pl-10 pr-10"
             placeholder="Create a password"
+            autoComplete="new-password"
           />
           <button
             type="button"
@@ -226,6 +229,7 @@ export default function Register() {
             type={showConfirmPassword ? 'text' : 'password'}
             className="input-field pl-10 pr-10"
             placeholder="Confirm your password"
+            autoComplete="new-password"
           />
           <button
             type="button"
