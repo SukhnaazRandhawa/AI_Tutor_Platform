@@ -13,32 +13,47 @@ class DemoVideoService {
   }
 
   private initializeDemoVideos() {
-    // Demo videos for different tutors
+    // Demo videos for different tutors - using more reliable URLs
     this.demoVideos.set('john', {
-      videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
       audioUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav',
       duration: 10,
       isLive: true
     });
 
     this.demoVideos.set('sarah', {
-      videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_2mb.mp4',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4',
       audioUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav',
       duration: 15,
       isLive: true
     });
 
+    this.demoVideos.set('sonia', {
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4',
+      audioUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav',
+      duration: 12,
+      isLive: true
+    });
+
     this.demoVideos.set('mike', {
-      videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_5mb.mp4',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4',
       audioUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav',
       duration: 20,
       isLive: true
     });
 
     this.demoVideos.set('emma', {
-      videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_10mb.mp4',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4',
       audioUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav',
       duration: 25,
+      isLive: true
+    });
+
+    // Default fallback
+    this.demoVideos.set('default', {
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
+      audioUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav',
+      duration: 10,
       isLive: true
     });
   }
@@ -48,7 +63,7 @@ class DemoVideoService {
    */
   getDemoVideo(tutorName: string): DemoVideo {
     const normalizedName = tutorName.toLowerCase();
-    return this.demoVideos.get(normalizedName) || this.demoVideos.get('john')!;
+    return this.demoVideos.get(normalizedName) || this.demoVideos.get('default')!;
   }
 
   /**
@@ -90,6 +105,12 @@ class DemoVideoService {
         avatarUrl: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face'
       },
       {
+        name: 'Sonia',
+        gender: 'female',
+        specialty: ['Mathematics', 'Science', 'General Tutoring'],
+        avatarUrl: 'https://images.unsplash.com/photo-1494790108755-2616b612b786?w=150&h=150&fit=crop&crop=face'
+      },
+      {
         name: 'Mike',
         gender: 'male',
         specialty: ['History', 'Geography', 'Economics'],
@@ -98,10 +119,24 @@ class DemoVideoService {
       {
         name: 'Emma',
         gender: 'female',
-        specialty: ['Literature', 'Art', 'Music'],
+        specialty: ['Literature', 'Art', 'Languages'],
         avatarUrl: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=150&h=150&fit=crop&crop=face'
       }
     ];
+  }
+
+  /**
+   * Get service status
+   */
+  getServiceStatus(): { status: string; features: any } {
+    return {
+      status: 'active',
+      features: {
+        demoVideos: true,
+        multipleTutors: true,
+        talkingResponses: true
+      }
+    };
   }
 }
 

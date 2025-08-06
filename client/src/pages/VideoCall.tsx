@@ -407,6 +407,7 @@ export default function VideoCall() {
         {/* Video Area */}
         <div className={`flex-1 p-6 ${showChat ? 'mr-4' : ''}`}>
           <motion.div
+            key="video-container"
             initial={{ opacity: 0, scale: 0.95 }}
             animate={{ opacity: 1, scale: 1 }}
             className="h-full flex flex-col"
@@ -518,6 +519,7 @@ export default function VideoCall() {
         {/* Chat Sidebar */}
         {showChat && (
           <motion.div
+            key="chat-sidebar"
             initial={{ opacity: 0, x: 100 }}
             animate={{ opacity: 1, x: 0 }}
             className="w-96 bg-secondary-800 border-l border-secondary-700 flex flex-col"

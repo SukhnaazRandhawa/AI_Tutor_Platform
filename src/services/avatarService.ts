@@ -1,4 +1,5 @@
 import axios from 'axios';
+import demoVideoService from './demoVideoService';
 
 interface AvatarConfig {
   tutorName: string;
@@ -46,26 +47,38 @@ class AvatarService {
     speechConfig: SpeechConfig
   ): Promise<{ videoUrl: string; audioUrl: string }> {
     try {
-      // Generate speech first
-      const audioUrl = await this.generateSpeech(text, speechConfig);
-      
-      // Generate avatar video with the audio
-      const videoUrl = await this.generateAvatarVideo(avatarConfig, audioUrl, text);
-      
-      return { videoUrl, audioUrl };
+      console.log('🎬 Generating talking avatar for:', avatarConfig.tutorName);
+      console.log('🎬 Using real APIs:', this.isConfigured);
+
+      if (this.isConfigured) {
+        // Try to use real APIs
+        const audioUrl = await this.generateSpeech(text, speechConfig);
+        const videoUrl = await this.generateAvatarVideo(avatarConfig, audioUrl, text);
+        
+        return { videoUrl, audioUrl };
+      } else {
+        // Use demo video service
+        console.log('🎬 Using demo video service');
+        const demoVideo = demoVideoService.generateTalkingResponse(avatarConfig.tutorName, text);
+        return {
+          videoUrl: demoVideo.videoUrl,
+          audioUrl: demoVideo.audioUrl
+        };
+      }
     } catch (error) {
-      console.error('Avatar generation error:', error);
-      // Return fallback URLs
+      console.error('❌ Avatar generation failed, using demo fallback:', error);
+      // Fallback to demo video
+      const demoVideo = demoVideoService.generateTalkingResponse(avatarConfig.tutorName, text);
       return {
-        videoUrl: 'https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4',
-        audioUrl: 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav'
+        videoUrl: demoVideo.videoUrl,
+        audioUrl: demoVideo.audioUrl
       };
     }
   }
 
   private async generateSpeech(text: string, config: SpeechConfig): Promise<string> {
     if (!this.elevenLabsApiKey) {
-      console.warn('ElevenLabs API key not found. Using fallback audio.');
+      console.log('⚠️ ElevenLabs API not configured, using demo audio');
       return 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav';
     }
 
@@ -73,31 +86,26 @@ class AvatarService {
       const response = await axios.post(
         `https://api.elevenlabs.io/v1/text-to-speech/${config.voice}`,
         {
-          text: text,
+          text,
           model_id: 'eleven_monolingual_v1',
           voice_settings: {
             stability: 0.5,
-            similarity_boost: 0.5,
-            style: 0.0,
-            use_speaker_boost: true
+            similarity_boost: 0.5
           }
         },
         {
           headers: {
-            'Accept': 'audio/mpeg',
-            'Content-Type': 'application/json',
-            'xi-api-key': this.elevenLabsApiKey
+            'xi-api-key': this.elevenLabsApiKey,
+            'Content-Type': 'application/json'
           },
           responseType: 'arraybuffer'
         }
       );
 
-      // For now, return a placeholder URL. In production, you'd save the audio file
-      // and return the URL to the saved file
-      console.log('✅ Speech generated successfully with ElevenLabs');
-      return 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav'; // Placeholder
+      console.log('✅ ElevenLabs speech generation successful');
+      return 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav'; // Placeholder for now
     } catch (error) {
-      console.error('Speech generation error:', error);
+      console.error('❌ ElevenLabs API error:', error);
       return 'https://www.soundjay.com/misc/sounds/bell-ringing-05.wav';
     }
   }
@@ -107,26 +115,29 @@ class AvatarService {
     audioUrl: string, 
     text: string
   ): Promise<string> {
-    // Try D-ID first, then HeyGen as fallback
-    if (this.didApiKey) {
-      try {
-        return await this.generateDIDAvatar(avatarConfig, audioUrl, text);
-      } catch (error) {
-        console.error('D-ID avatar generation failed:', error);
-      }
-    }
-
+    // Try HeyGen first (user has correct avatar ID and voice ID), then D-ID as fallback
     if (this.heygenApiKey) {
       try {
+        console.log('🎬 Trying HeyGen first (correct avatar ID and voice ID)...');
         return await this.generateHeyGenAvatar(avatarConfig, audioUrl, text);
       } catch (error) {
         console.error('HeyGen avatar generation failed:', error);
       }
     }
 
+    if (this.didApiKey) {
+      try {
+        console.log('🎬 Trying D-ID as fallback (12 credits available)...');
+        return await this.generateDIDAvatar(avatarConfig, audioUrl, text);
+      } catch (error) {
+        console.error('D-ID avatar generation failed:', error);
+      }
+    }
+
     // Fallback to demo video
-    console.warn('No avatar API available. Using demo video.');
-    return `https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4`;
+    console.log('⚠️ Falling back to demo video (no API configured or failed)');
+    const demoVideo = demoVideoService.getDemoVideo(avatarConfig.tutorName);
+    return demoVideo.videoUrl;
   }
 
   private async generateDIDAvatar(
@@ -135,6 +146,9 @@ class AvatarService {
     text: string
   ): Promise<string> {
     try {
+      console.log('🎬 Starting D-ID avatar generation...');
+      console.log('🎬 Using D-ID API key:', this.didApiKey ? 'Present' : 'Missing');
+      
       const response = await axios.post(
         'https://api.d-id.com/talks',
         {
@@ -142,15 +156,15 @@ class AvatarService {
             type: 'text',
             input: text,
             provider: {
-              type: 'elevenlabs',
-              voice_id: '21m00Tcm4TlvDq8ikWAM'
+              type: 'microsoft',
+              voice_id: 'en-US-JennyNeural'
             }
           },
           config: {
             fluent: true,
             pad_audio: 0.0
           },
-          source_url: `https://create-images-results.d-id.com/DefaultPresenters/${avatarConfig.gender === 'male' ? 'John' : 'Sarah'}/image.jpeg`
+          source_url: 'https://create-images-results.d-id.com/DefaultPresenters/Sarah/image.jpeg'
         },
         {
           headers: {
@@ -160,11 +174,48 @@ class AvatarService {
         }
       );
 
-      console.log('✅ D-ID avatar video generation started');
-      return `https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4`; // Placeholder
+      console.log('✅ D-ID API response received:', response.data);
+      
+      if (response.data.id) {
+        // Wait for the video to be generated
+        const talkId = response.data.id;
+        console.log('🎬 Waiting for D-ID video generation... Talk ID:', talkId);
+        
+        // Poll for completion
+        let attempts = 0;
+        const maxAttempts = 30; // 30 seconds max wait
+        
+        while (attempts < maxAttempts) {
+          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+          
+          const statusResponse = await axios.get(`https://api.d-id.com/talks/${talkId}`, {
+            headers: {
+              'Authorization': `Basic ${Buffer.from(this.didApiKey + ':').toString('base64')}`
+            }
+          });
+          
+          console.log('🎬 D-ID status:', statusResponse.data.status);
+          
+          if (statusResponse.data.status === 'done') {
+            const videoUrl = statusResponse.data.result_url;
+            console.log('✅ D-ID video generated successfully:', videoUrl);
+            return videoUrl;
+          } else if (statusResponse.data.status === 'error') {
+            throw new Error('D-ID video generation failed: ' + statusResponse.data.error?.message);
+          }
+          
+          attempts++;
+        }
+        
+        throw new Error('D-ID video generation timeout');
+      } else {
+        throw new Error('D-ID API did not return a talk ID');
+      }
     } catch (error) {
-      console.error('D-ID API error:', error);
-      throw error;
+      console.error('❌ D-ID API error:', error);
+      console.log('⚠️ Falling back to demo video');
+      const demoVideo = demoVideoService.getDemoVideo(avatarConfig.tutorName);
+      return demoVideo.videoUrl;
     }
   }
 
@@ -174,19 +225,25 @@ class AvatarService {
     text: string
   ): Promise<string> {
     try {
+      console.log('🎬 Starting HeyGen avatar generation...');
+      console.log('🎬 Using HeyGen API key:', this.heygenApiKey ? 'Present' : 'Missing');
+      
+      // Use the user's actual avatar ID
+      const avatarId = 'Brandon_expressive_public';
+      
       const response = await axios.post(
-        'https://api.heygen.com/v1/video.generate',
+        'https://api.heygen.com/v2/video/generate',
         {
           video_inputs: [
             {
               character: {
                 type: 'avatar',
-                avatar_id: avatarConfig.gender === 'male' ? 'male_01' : 'female_01'
+                avatar_id: avatarId
               },
               voice: {
                 type: 'text',
                 input_text: text,
-                voice_id: 'en_us_001'
+                voice_id: '8661cd40d6c44c709e2d0031c0186ada' // Using the correct voice ID
               }
             }
           ],
@@ -197,14 +254,70 @@ class AvatarService {
           headers: {
             'X-Api-Key': this.heygenApiKey,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 30000 // 30 second timeout
         }
       );
 
-      console.log('✅ HeyGen avatar video generation started');
-      return `https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4`; // Placeholder
+      console.log('✅ HeyGen video generation request successful!');
+      console.log('✅ Response:', response.data);
+      
+      if (response.data.data?.video_id) {
+        const videoId = response.data.data.video_id;
+        console.log('✅ Video ID received:', videoId);
+        
+        // Poll for video completion
+        let videoUrl = '';
+        let attempts = 0;
+        const maxAttempts = 30; // 5 minutes max (30 * 10 seconds)
+        
+        while (attempts < maxAttempts) {
+          console.log(`🔄 Polling for video completion (attempt ${attempts + 1}/${maxAttempts})...`);
+          
+          try {
+            const statusResponse = await axios.get(
+              `https://api.heygen.com/v2/video/status?video_id=${videoId}`,
+              {
+                headers: {
+                  'X-Api-Key': this.heygenApiKey,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 10000
+              }
+            );
+            
+            console.log('✅ Status response:', statusResponse.data);
+            
+            if (statusResponse.data.data?.status === 'completed') {
+              videoUrl = statusResponse.data.data.video_url;
+              console.log('✅ Video completed! URL:', videoUrl);
+              break;
+            } else if (statusResponse.data.data?.status === 'failed') {
+              throw new Error('Video generation failed');
+            }
+            
+            // Wait 10 seconds before next poll
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            attempts++;
+            
+          } catch (error) {
+            console.error('❌ Error polling video status:', error);
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, 10000));
+          }
+        }
+        
+        if (videoUrl) {
+          return videoUrl;
+        } else {
+          throw new Error('Video generation timed out');
+        }
+      } else {
+        throw new Error('No video ID received from HeyGen');
+      }
+      
     } catch (error) {
-      console.error('HeyGen API error:', error);
+      console.error('❌ HeyGen avatar generation failed:', error);
       throw error;
     }
   }
