@@ -5,8 +5,10 @@ import {
     MessageSquare,
     Mic,
     MicOff,
+    Pause,
     Phone,
     PhoneOff,
+    Play,
     Send,
     Upload,
     Video,
@@ -18,7 +20,15 @@ import React, { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
-import { sessionAPI } from '../services/api';
+import { sessionAPI, videoAPI } from '../services/api';
+
+// TypeScript declarations for Web Speech API
+declare global {
+  interface Window {
+    SpeechRecognition: any;
+    webkitSpeechRecognition: any;
+  }
+}
 
 interface Message {
   id: string;
@@ -26,6 +36,13 @@ interface Message {
   content: string;
   timestamp: Date | string;
   attachments?: string[];
+}
+
+interface VideoStream {
+  videoUrl: string;
+  audioUrl: string;
+  duration: number;
+  isLive: boolean;
 }
 
 export default function VideoCall() {
@@ -44,9 +61,21 @@ export default function VideoCall() {
   const [isLoading, setIsLoading] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId || null);
   
+  // Video streaming state
+  const [videoStream, setVideoStream] = useState<VideoStream | null>(null);
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [videoQuality, setVideoQuality] = useState<'low' | 'medium' | 'high'>('medium');
+  
+  // Voice recognition state
+  const [isListening, setIsListening] = useState(false);
+  const [isVoiceSupported, setIsVoiceSupported] = useState(false);
+  
   // Refs
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const recognitionRef = useRef<any>(null);
 
   // Initialize session
   useEffect(() => {
@@ -55,10 +84,68 @@ export default function VideoCall() {
     }
   }, [currentSessionId]);
 
+  // Initialize voice recognition
+  useEffect(() => {
+    initializeVoiceRecognition();
+  }, []);
+
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  // Handle video stream updates
+  useEffect(() => {
+    if (videoStream && videoRef.current) {
+      videoRef.current.src = videoStream.videoUrl;
+      videoRef.current.load();
+    }
+  }, [videoStream]);
+
+  // Handle audio stream updates
+  useEffect(() => {
+    if (videoStream && audioRef.current) {
+      audioRef.current.src = videoStream.audioUrl;
+      audioRef.current.load();
+    }
+  }, [videoStream]);
+
+  const initializeVoiceRecognition = () => {
+    // Check if browser supports speech recognition
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (SpeechRecognition) {
+      setIsVoiceSupported(true);
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = 'en-US';
+      
+      recognitionRef.current.onstart = () => {
+        setIsListening(true);
+        toast.success('Listening... Speak now!');
+      };
+      
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setNewMessage(transcript);
+        toast.success(`You said: "${transcript}"`);
+      };
+      
+      recognitionRef.current.onerror = (event: any) => {
+        console.error('Speech recognition error:', event.error);
+        setIsListening(false);
+        toast.error('Voice recognition error. Please try again.');
+      };
+      
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    } else {
+      console.warn('Speech recognition not supported in this browser');
+      setIsVoiceSupported(false);
+    }
+  };
 
   const initializeSession = async () => {
     try {
@@ -68,13 +155,27 @@ export default function VideoCall() {
         setCurrentSessionId(response.data.session.id);
         setMessages(response.data.session.messages || []);
         setIsCallActive(true);
+        
+        // Start video stream
+        await startVideoStream(response.data.session.id);
       }
     } catch (error: any) {
       console.error('Failed to get session:', error);
-      // If no active session, we'll start a new one
       setIsCallActive(false);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const startVideoStream = async (sessionId: string) => {
+    try {
+      const response = await videoAPI.startStream(sessionId, user?.aiTutorName || 'John', `Hello ${user?.name}! I'm ${user?.aiTutorName}, your AI tutor. How can I help you today?`);
+      if (response.data.success) {
+        setVideoStream(response.data.stream);
+        setIsVideoPlaying(true);
+      }
+    } catch (error) {
+      console.error('Failed to start video stream:', error);
     }
   };
 
@@ -96,6 +197,10 @@ export default function VideoCall() {
         setCurrentSessionId(response.data.session.id);
         setMessages(response.data.session.messages || []);
         setIsCallActive(true);
+        
+        // Start video stream
+        await startVideoStream(response.data.session.id);
+        
         toast.success('Call started! Your AI tutor is ready.');
       }
       
@@ -112,10 +217,15 @@ export default function VideoCall() {
     try {
       if (currentSessionId) {
         await sessionAPI.endSession(currentSessionId);
+        
+        // Stop video stream
+        await videoAPI.stopStream(currentSessionId);
       }
       setIsCallActive(false);
       setCurrentSessionId(null);
       setMessages([]);
+      setVideoStream(null);
+      setIsVideoPlaying(false);
       toast.success('Call ended');
       navigate('/dashboard');
     } catch (error: any) {
@@ -148,10 +258,27 @@ export default function VideoCall() {
           timestamp: new Date()
         };
         setMessages(prev => [...prev, aiMessage]);
+
+        // Generate talking response
+        await generateTalkingResponse(response.data.response);
       }
     } catch (error: any) {
       console.error('Failed to send message:', error);
       toast.error('Failed to send message');
+    }
+  };
+
+  const generateTalkingResponse = async (message: string) => {
+    try {
+      if (!currentSessionId) return;
+      
+      const response = await videoAPI.generateTalkingResponse(currentSessionId, message);
+      if (response.data.success) {
+        setVideoStream(response.data.stream);
+        setIsVideoPlaying(true);
+      }
+    } catch (error) {
+      console.error('Failed to generate talking response:', error);
     }
   };
 
@@ -174,11 +301,39 @@ export default function VideoCall() {
 
   const toggleVolume = () => {
     setIsVolumeOn(!isVolumeOn);
+    if (audioRef.current) {
+      audioRef.current.muted = !isVolumeOn;
+    }
     toast.success(isVolumeOn ? 'Volume muted' : 'Volume enabled');
   };
 
   const toggleChat = () => {
     setShowChat(!showChat);
+  };
+
+  const toggleVideoPlayback = () => {
+    if (videoRef.current) {
+      if (isVideoPlaying) {
+        videoRef.current.pause();
+      } else {
+        videoRef.current.play();
+      }
+      setIsVideoPlaying(!isVideoPlaying);
+    }
+  };
+
+  const startVoiceInput = () => {
+    if (recognitionRef.current && isVoiceSupported) {
+      recognitionRef.current.start();
+    } else {
+      toast.error('Voice recognition not supported in this browser');
+    }
+  };
+
+  const stopVoiceInput = () => {
+    if (recognitionRef.current) {
+      recognitionRef.current.stop();
+    }
   };
 
   return (
@@ -257,8 +412,30 @@ export default function VideoCall() {
             className="h-full flex flex-col"
           >
             {/* Main Video Display */}
-            <div className="flex-1 bg-secondary-800 rounded-xl border border-secondary-700 flex items-center justify-center mb-4">
-              {isCallActive ? (
+            <div className="flex-1 bg-secondary-800 rounded-xl border border-secondary-700 flex items-center justify-center mb-4 relative overflow-hidden">
+              {isCallActive && videoStream ? (
+                <div className="w-full h-full relative">
+                  <video
+                    ref={videoRef}
+                    className="w-full h-full object-cover rounded-xl"
+                    autoPlay
+                    muted={!isVolumeOn}
+                    onPlay={() => setIsVideoPlaying(true)}
+                    onPause={() => setIsVideoPlaying(false)}
+                  />
+                  <div className="absolute top-4 right-4 flex space-x-2">
+                    <button
+                      onClick={toggleVideoPlayback}
+                      className="p-2 bg-black bg-opacity-50 text-white rounded-lg hover:bg-opacity-70 transition-colors"
+                    >
+                      {isVideoPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <div className="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-lg text-sm">
+                    {videoQuality} Quality
+                  </div>
+                </div>
+              ) : isCallActive ? (
                 <div className="text-center">
                   <div className="h-32 w-32 bg-gradient-to-r from-primary-600 to-accent-600 rounded-full flex items-center justify-center mx-auto mb-4">
                     <span className="text-4xl font-bold text-white">
@@ -294,6 +471,14 @@ export default function VideoCall() {
                   </button>
                 </div>
               )}
+              
+              {/* Hidden audio element for AI tutor speech */}
+              <audio
+                ref={audioRef}
+                autoPlay
+                muted={!isVolumeOn}
+                style={{ display: 'none' }}
+              />
             </div>
 
             {/* Call Controls */}
@@ -388,6 +573,21 @@ export default function VideoCall() {
                 <button className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
                   <FileText className="h-5 w-5" />
                 </button>
+                {/* Voice Input Button */}
+                {isVoiceSupported && (
+                  <button
+                    onClick={isListening ? stopVoiceInput : startVoiceInput}
+                    disabled={!isCallActive}
+                    className={`p-2 rounded-lg transition-colors ${
+                      isListening
+                        ? 'bg-red-600 text-white animate-pulse'
+                        : 'text-secondary-400 hover:text-white hover:bg-secondary-700'
+                    } disabled:opacity-50 disabled:cursor-not-allowed`}
+                    title={isListening ? 'Stop listening' : 'Start voice input'}
+                  >
+                    {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+                  </button>
+                )}
                 <div className="flex-1 relative">
                   <input
                     ref={messageInputRef}
@@ -395,7 +595,7 @@ export default function VideoCall() {
                     value={newMessage}
                     onChange={(e) => setNewMessage(e.target.value)}
                     onKeyPress={handleKeyPress}
-                    placeholder="Type your message..."
+                    placeholder={isVoiceSupported ? "Type your message or use voice input..." : "Type your message..."}
                     disabled={!isCallActive}
                     className="w-full px-3 py-2 bg-secondary-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 disabled:opacity-50"
                   />
@@ -408,6 +608,11 @@ export default function VideoCall() {
                   <Send className="h-5 w-5" />
                 </button>
               </div>
+              {isVoiceSupported && (
+                <p className="text-xs text-secondary-400 mt-2">
+                  💡 Tip: Click the microphone button to speak with your AI tutor!
+                </p>
+              )}
             </div>
           </motion.div>
         )}

@@ -149,4 +149,25 @@ export const healthAPI = {
   check: () => api.get('/'),
 };
 
+// Video API
+export const videoAPI = {
+  startStream: (sessionId: string, tutorName: string, initialMessage?: string) =>
+    api.post('/api/video/start-stream', { sessionId, tutorName, initialMessage }),
+
+  generateTalkingResponse: (sessionId: string, message: string) =>
+    api.post('/api/video/talking-response', { sessionId, message }),
+
+  getStreamStatus: (sessionId: string) =>
+    api.get(`/api/video/stream-status/${sessionId}`),
+
+  stopStream: (sessionId: string) =>
+    api.delete(`/api/video/stop-stream/${sessionId}`),
+
+  getAvailableTutors: () => api.get('/api/video/available-tutors'),
+
+  getQualityOptions: () => api.get('/api/video/quality-options'),
+
+  isStreamingSupported: () => api.get('/api/video/streaming-supported'),
+};
+
 export default api; 
