@@ -7,13 +7,19 @@ class AIService {
 
   constructor() {
     const apiKey = process.env.OPENAI_API_KEY;
-    if (apiKey) {
+    console.log('🔍 AI Service - Checking OpenAI API key...');
+    console.log('🔍 API Key exists:', !!apiKey);
+    console.log('🔍 API Key starts with:', apiKey ? apiKey.substring(0, 10) + '...' : 'N/A');
+    
+    if (apiKey && apiKey !== 'your-openai-api-key-here') {
       this.openai = new OpenAI({
         apiKey: apiKey
       });
       this.isConfigured = true;
+      console.log('✅ OpenAI API configured successfully');
     } else {
-      console.warn('OpenAI API key not found. AI responses will be mocked.');
+      console.warn('⚠️ OpenAI API key not found or invalid. AI responses will be mocked.');
+      console.warn('⚠️ Please check your .env file and ensure OPENAI_API_KEY is set correctly.');
     }
   }
 
@@ -27,7 +33,15 @@ class AIService {
     language: string = 'English',
     subject?: string
   ): Promise<string> {
+    console.log('🤖 Generating AI response...');
+    console.log('🤖 Using OpenAI:', this.isConfigured);
+    console.log('🤖 User:', userName);
+    console.log('🤖 Tutor:', aiTutorName);
+    console.log('🤖 Language:', language);
+    console.log('🤖 Subject:', subject);
+    
     if (!this.isConfigured) {
+      console.log('⚠️ Using mock response (OpenAI not configured)');
       return this.generateMockResponse(messages, userName, aiTutorName);
     }
 
@@ -41,6 +55,7 @@ class AIService {
       // Create system prompt for AI tutor
       const systemPrompt = this.createSystemPrompt(userName, aiTutorName, language, subject);
 
+      console.log('🤖 Sending request to OpenAI...');
       const response = await this.openai.chat.completions.create({
         model: 'gpt-3.5-turbo',
         messages: [
@@ -56,9 +71,12 @@ class AIService {
         frequency_penalty: 0.1
       });
 
-      return response.choices[0]?.message?.content || 'I apologize, but I am unable to respond at the moment.';
+      const aiResponse = response.choices[0]?.message?.content || 'I apologize, but I am unable to respond at the moment.';
+      console.log('✅ OpenAI response received:', aiResponse.substring(0, 100) + '...');
+      return aiResponse;
     } catch (error) {
-      console.error('OpenAI API error:', error);
+      console.error('❌ OpenAI API error:', error);
+      console.log('⚠️ Falling back to mock response');
       return this.generateMockResponse(messages, userName, aiTutorName);
     }
   }
@@ -84,6 +102,7 @@ Key Guidelines:
 7. If ${userName} uploads documents, reference them in your explanations
 8. Keep responses concise but comprehensive
 9. Maintain a conversational, friendly tone
+10. When teaching concepts like logistic regression, provide practical examples and clear explanations
 
 ${subject ? `Current subject: ${subject}` : ''}
 
@@ -125,6 +144,14 @@ Remember: You are here to help ${userName} learn and understand concepts effecti
     
     if (userMessage.includes('help')) {
       return `Of course, ${userName}! I'm here to help you. Could you tell me more specifically what you're struggling with?`;
+    }
+    
+    if (userMessage.includes('logistic regression')) {
+      return `Great question, ${userName}! Logistic regression is a statistical method used for binary classification. It predicts the probability of an event occurring. For example, it can predict whether an email is spam (1) or not spam (0) based on features like word frequency, sender information, etc. Would you like me to explain more about how it works?`;
+    }
+    
+    if (userMessage.includes('example')) {
+      return `Here's a practical example, ${userName}: Imagine you're a bank trying to predict if a customer will default on a loan. You'd use logistic regression with features like credit score, income, loan amount, and employment history to predict the probability of default. The model outputs a probability between 0 and 1, and you can set a threshold (like 0.5) to classify customers as likely to default or not.`;
     }
     
     // Default response

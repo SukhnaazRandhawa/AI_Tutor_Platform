@@ -10,9 +10,10 @@ dotenv.config();
 
 // Import routes (we'll create these next)
 import authRoutes from './routes/auth';
-import avatarRoutes from './routes/avatar';
+import avatarRoutes from './routes/avatar'; // Added avatar routes
 import sessionRoutes from './routes/session';
 import userRoutes from './routes/user';
+import videoRoutes from './routes/video';
 import voiceRoutes from './routes/voice';
 
 // Import middleware
@@ -64,6 +65,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/session', sessionRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/avatar', avatarRoutes);
+app.use('/api/video', videoRoutes);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {

@@ -5,13 +5,10 @@ import User from '../models/User';
 
 const router = express.Router();
 
-// Generate JWT Token
 const generateToken = (userId: string): string => {
-  const secret = process.env.JWT_SECRET || 'fallback-secret';
-  
   return jwt.sign(
     { userId },
-    secret,
+    process.env.JWT_SECRET || 'your-secret-key',
     { expiresIn: '7d' }
   );
 };
@@ -20,14 +17,13 @@ const generateToken = (userId: string): string => {
 // @desc    Register a new user
 // @access  Public
 router.post('/register', [
-  body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters'),
+  body('name').notEmpty().trim().withMessage('Name is required'),
   body('email').isEmail().normalizeEmail().withMessage('Please provide a valid email'),
   body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters'),
-  body('language').notEmpty().withMessage('Language is required'),
-  body('aiTutorName').trim().notEmpty().withMessage('AI Tutor name is required')
+  body('language').optional().isString().withMessage('Language must be a string'),
+  body('aiTutorName').optional().isString().withMessage('AI tutor name must be a string')
 ], async (req: Request, res: Response): Promise<void> => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       res.status(400).json({
@@ -37,32 +33,31 @@ router.post('/register', [
       return;
     }
 
-    const { name, email, password, language, aiTutorName } = req.body;
+    const { name, email, password, language = 'English', aiTutorName = 'John' } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
+    let user = await User.findOne({ email });
+    if (user) {
       res.status(400).json({
         success: false,
-        error: 'User with this email already exists'
+        error: 'User already exists'
       });
       return;
     }
 
     // Create new user
-    const user = new User({
+    user = new User({
       name,
       email,
       password,
       language,
-      aiTutorName,
-      isCustomTutor: false // For now, we'll use default tutor
+      aiTutorName
     });
 
     await user.save();
 
     // Generate token
-    const token = generateToken((user._id as any).toString());
+    const token = generateToken(user._id?.toString() || '');
 
     res.status(201).json({
       success: true,
@@ -94,7 +89,6 @@ router.post('/login', [
   body('password').notEmpty().withMessage('Password is required')
 ], async (req: Request, res: Response): Promise<void> => {
   try {
-    // Check for validation errors
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       res.status(400).json({
@@ -106,10 +100,10 @@ router.post('/login', [
 
     const { email, password } = req.body;
 
-    // Find user and include password for comparison
+    // Check if user exists
     const user = await User.findOne({ email }).select('+password');
     if (!user) {
-      res.status(401).json({
+      res.status(400).json({
         success: false,
         error: 'Invalid credentials'
       });
@@ -117,9 +111,9 @@ router.post('/login', [
     }
 
     // Check password
-    const isPasswordValid = await user.comparePassword(password);
-    if (!isPasswordValid) {
-      res.status(401).json({
+    const isMatch = await user.comparePassword(password);
+    if (!isMatch) {
+      res.status(400).json({
         success: false,
         error: 'Invalid credentials'
       });
@@ -127,7 +121,7 @@ router.post('/login', [
     }
 
     // Generate token
-    const token = generateToken((user._id as any).toString());
+    const token = generateToken(user._id?.toString() || '');
 
     res.json({
       success: true,
