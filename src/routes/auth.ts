@@ -33,11 +33,11 @@ router.post('/register', [
       return;
     }
 
-    const { name, email, password, language = 'English', aiTutorName = 'John' } = req.body;
+    const { name, email, password, language, aiTutorName } = req.body;
 
     // Check if user already exists
-    let user = await User.findOne({ email });
-    if (user) {
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
       res.status(400).json({
         success: false,
         error: 'User already exists'
@@ -46,22 +46,20 @@ router.post('/register', [
     }
 
     // Create new user
-    user = new User({
+    const user = await User.create({
       name,
       email,
       password,
-      language,
-      aiTutorName
+      language: language || 'English',
+      aiTutorName: aiTutorName || 'AI Tutor'
     });
 
-    await user.save();
-
     // Generate token
-    const token = generateToken(user._id?.toString() || '');
+    const userId = user._id?.toString() || '';
+    const token = generateToken(userId);
 
     res.status(201).json({
       success: true,
-      message: 'User registered successfully',
       token,
       user: {
         id: user._id,
@@ -71,12 +69,11 @@ router.post('/register', [
         aiTutorName: user.aiTutorName
       }
     });
-
   } catch (error) {
     console.error('Registration error:', error);
     res.status(500).json({
       success: false,
-      error: 'Server error during registration'
+      error: 'Registration failed'
     });
   }
 });
@@ -121,11 +118,11 @@ router.post('/login', [
     }
 
     // Generate token
-    const token = generateToken(user._id?.toString() || '');
+    const userId = user._id?.toString() || '';
+    const token = generateToken(userId);
 
     res.json({
       success: true,
-      message: 'Login successful',
       token,
       user: {
         id: user._id,
@@ -135,12 +132,11 @@ router.post('/login', [
         aiTutorName: user.aiTutorName
       }
     });
-
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({
       success: false,
-      error: 'Server error during login'
+      error: 'Login failed'
     });
   }
 });
