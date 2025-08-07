@@ -45,6 +45,23 @@ export default function Register() {
 
   const onSubmit = async (data: RegisterFormData) => {
     try {
+      console.log('📝 Form data submitted:', { ...data, password: '[HIDDEN]', confirmPassword: '[HIDDEN]' });
+      console.log('📝 Form errors:', errors);
+      console.log('📝 Form is valid:', Object.keys(errors).length === 0);
+      console.log('📝 Current step:', currentStep);
+      
+      // Check if user is on the final step
+      if (currentStep !== 4) {
+        console.error('❌ User must complete all steps before submitting');
+        return;
+      }
+      
+      // Check if form is valid
+      if (Object.keys(errors).length > 0) {
+        console.error('❌ Form has validation errors:', errors);
+        return;
+      }
+      
       await registerUser({
         name: data.name,
         email: data.email,
@@ -54,6 +71,7 @@ export default function Register() {
       });
       navigate('/dashboard');
     } catch (error) {
+      console.error('❌ Form submission error:', error);
       // Error is handled in AuthProvider
     }
   };
@@ -117,7 +135,7 @@ export default function Register() {
           >
             <option value="">Select your preferred language</option>
             {languages.map((lang) => (
-              <option key={lang.code} value={lang.name}>
+              <option key={lang.code} value={lang.code}>
                 {lang.name}
               </option>
             ))}
@@ -454,6 +472,9 @@ export default function Register() {
             >
               Sign in here
             </Link>
+          </p>
+          <p className="text-xs text-secondary-500 mt-2">
+            If you're getting an error about an existing account, try logging in instead.
           </p>
         </div>
       </motion.div>

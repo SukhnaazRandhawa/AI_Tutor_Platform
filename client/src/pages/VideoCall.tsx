@@ -47,8 +47,38 @@ interface VideoStream {
 
 export default function VideoCall() {
   const { sessionId } = useParams();
-  const { user } = useAuth();
+  const { user, token, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  
+  // Check if user is authenticated
+  useEffect(() => {
+    console.log('🔐 Auth state:', { token: !!token, user: !!user, authLoading });
+    if (!authLoading && (!token || !user)) {
+      console.log('❌ User not authenticated, redirecting to login');
+      navigate('/login');
+      return;
+    }
+    if (token && user) {
+      console.log('✅ User authenticated:', user.name);
+    }
+  }, [token, user, authLoading, navigate]);
+  
+  // Show loading screen while checking authentication
+  if (authLoading) {
+    return (
+      <div className="h-screen bg-secondary-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-white">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Don't render if not authenticated
+  if (!token || !user) {
+    return null;
+  }
   
   // State management
   const [isCallActive, setIsCallActive] = useState(false);
@@ -176,13 +206,21 @@ export default function VideoCall() {
 
   const startVideoStream = async (sessionId: string) => {
     try {
+      console.log('🎬 Starting video stream for session:', sessionId);
+      console.log('🎬 User:', user?.name);
+      console.log('🎬 Tutor:', user?.aiTutorName);
+      
       const response = await videoAPI.startStream(sessionId, user?.aiTutorName || 'John', `Hello ${user?.name}! I'm ${user?.aiTutorName}, your AI tutor. How can I help you today?`);
+      console.log('✅ Video stream response:', response.data);
+      
       if (response.data.success) {
-        setVideoStream(response.data.stream);
+        setVideoStream(response.data.videoStream);
         setIsVideoPlaying(true);
+        console.log('✅ Video stream started successfully');
       }
     } catch (error) {
-      console.error('Failed to start video stream:', error);
+      console.error('❌ Failed to start video stream:', error);
+      toast.error('Failed to start video stream. Please try again.');
     }
   };
 
@@ -578,16 +616,15 @@ export default function VideoCall() {
             {/* Message Input */}
             <div className="p-4 border-t border-secondary-700">
               <div className="flex space-x-2">
-                <button key="upload-button" className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
+                <button className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
                   <Upload className="h-5 w-5" />
                 </button>
-                <button key="file-button" className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
+                <button className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
                   <FileText className="h-5 w-5" />
                 </button>
                 {/* Voice Input Button */}
                 {isVoiceSupported && (
                   <button
-                    key="voice-button"
                     onClick={isListening ? stopVoiceInput : startVoiceInput}
                     disabled={!isCallActive}
                     className={`p-2 rounded-lg transition-colors ${
@@ -613,7 +650,6 @@ export default function VideoCall() {
                   />
                 </div>
                 <button
-                  key="send-button"
                   onClick={handleSendMessage}
                   disabled={!newMessage.trim() || !isCallActive}
                   className="p-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

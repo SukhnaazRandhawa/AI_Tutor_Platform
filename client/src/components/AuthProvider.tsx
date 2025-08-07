@@ -95,7 +95,11 @@ export default function AuthProvider({ children }: AuthProviderProps) {
   }) => {
     try {
       setLoading(true);
+      console.log('🔐 Attempting registration with data:', { ...userData, password: '[HIDDEN]' });
+      
       const response = await authAPI.register(userData);
+      console.log('✅ Registration response:', response.data);
+      
       const { token: newToken, user: newUser } = response.data;
       
       localStorage.setItem('token', newToken);
@@ -104,7 +108,25 @@ export default function AuthProvider({ children }: AuthProviderProps) {
       
       toast.success('Registration successful!');
     } catch (error: any) {
-      const message = error.response?.data?.error || 'Registration failed';
+      console.error('❌ Registration error:', error);
+      console.error('❌ Error response:', error.response?.data);
+      
+      let message = 'Registration failed';
+      
+      if (error.response?.data?.errors && Array.isArray(error.response.data.errors)) {
+        // Handle validation errors array
+        const firstError = error.response.data.errors[0];
+        message = firstError.msg || firstError.message || 'Validation error';
+      } else if (error.response?.data?.error) {
+        // Handle single error message
+        const errorMsg = error.response.data.error;
+        if (errorMsg === 'User already exists') {
+          message = 'An account with this email already exists. Please try logging in instead.';
+        } else {
+          message = errorMsg;
+        }
+      }
+      
       toast.error(message);
       throw error;
     } finally {

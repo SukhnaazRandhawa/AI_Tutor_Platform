@@ -44,7 +44,10 @@ export const authAPI = {
     password: string;
     language: string;
     aiTutorName: string;
-  }) => api.post('/api/auth/register', userData),
+  }) => {
+    console.log('📡 Sending registration request:', { ...userData, password: '[HIDDEN]' });
+    return api.post('/api/auth/register', userData);
+  },
 
   login: (credentials: { email: string; password: string }) =>
     api.post('/api/auth/login', credentials),
@@ -151,8 +154,8 @@ export const healthAPI = {
 
 // Video API
 export const videoAPI = {
-  startStream: (sessionId: string, tutorName: string, initialMessage?: string) =>
-    api.post('/api/video/start-stream', { sessionId, tutorName, initialMessage }),
+  startStream: (sessionId: string, tutorName: string, userMessage?: string) =>
+    api.post('/api/video/start-stream', { sessionId, tutorName, userMessage }),
 
   generateTalkingResponse: (sessionId: string, message: string) =>
     api.post('/api/video/talking-response', { sessionId, message }),

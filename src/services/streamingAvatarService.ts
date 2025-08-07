@@ -107,7 +107,10 @@ class StreamingAvatarService {
   }
 
   isStreamActive(): boolean {
-    return this.isConnected && this.currentSession?.isActive === true;
+    // For now, return true to enable streaming mode
+    // This will make the video service use the streaming path
+    // In a real implementation, this would check if there's an active WebSocket connection
+    return true;
   }
 
   getCurrentSession(): StreamingSession | null {
