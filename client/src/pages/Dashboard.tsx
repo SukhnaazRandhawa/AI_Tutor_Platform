@@ -28,7 +28,7 @@ export default function Dashboard() {
     try {
       setLoading(true);
       const response = await sessionAPI.startSession(subject);
-      const sessionId = response.data.sessionId;
+      const sessionId = response.data.session.id; // Fixed: was response.data.sessionId
       navigate(`/video-call/${sessionId}`);
     } catch (error: any) {
       const message = error.response?.data?.error || 'Failed to start session';

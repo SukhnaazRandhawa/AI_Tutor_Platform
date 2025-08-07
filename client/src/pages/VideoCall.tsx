@@ -81,8 +81,15 @@ export default function VideoCall() {
   useEffect(() => {
     if (currentSessionId) {
       initializeSession();
+    } else if (sessionId) {
+      // If sessionId is provided via URL params, use it
+      setCurrentSessionId(sessionId);
+    } else {
+      // If no sessionId is available, redirect to dashboard
+      console.log('No session ID available, redirecting to dashboard');
+      navigate('/dashboard');
     }
-  }, [currentSessionId]);
+  }, [currentSessionId, sessionId, navigate]);
 
   // Initialize voice recognition
   useEffect(() => {
@@ -337,25 +344,25 @@ export default function VideoCall() {
   };
 
   return (
-    <div className="min-h-screen bg-secondary-900">
-      {/* Header */}
-      <header className="bg-secondary-800 border-b border-secondary-700">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
-            <div className="flex items-center space-x-4">
-              <button
-                onClick={() => navigate('/dashboard')}
-                className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              <div>
-                <h1 className="text-lg font-semibold text-white">Session with {user?.aiTutorName}</h1>
-                <p className="text-sm text-secondary-400">
-                  Session ID: {currentSessionId || 'Not started'}
-                </p>
-              </div>
+    <div key={`video-call-${currentSessionId || 'no-session'}`} className="h-screen bg-secondary-900 flex flex-col">
+      <header className="bg-secondary-800 border-b border-secondary-700 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => navigate('/dashboard')}
+              className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </button>
+            <div>
+              <h1 className="text-lg font-semibold text-white">
+                Session with {user?.aiTutorName}
+              </h1>
+              <p className="text-sm text-secondary-400">
+                Session ID: {currentSessionId || 'Not started'}
+              </p>
             </div>
+          </div>
             
             <div className="flex items-center space-x-2">
               <button
@@ -400,8 +407,7 @@ export default function VideoCall() {
               </button>
             </div>
           </div>
-        </div>
-      </header>
+        </header>
 
       <main className="flex h-[calc(100vh-80px)]">
         {/* Video Area */}
@@ -486,6 +492,7 @@ export default function VideoCall() {
             {isCallActive && (
               <div className="flex justify-center space-x-4">
                 <button
+                  key="mute-button"
                   onClick={toggleMute}
                   className={`p-3 rounded-full transition-colors ${
                     isMuted 
@@ -496,12 +503,14 @@ export default function VideoCall() {
                   {isMuted ? <MicOff className="h-6 w-6" /> : <Mic className="h-6 w-6" />}
                 </button>
                 <button
+                  key="end-call-button"
                   onClick={handleEndCall}
                   className="p-3 bg-red-600 text-white rounded-full hover:bg-red-700 transition-colors"
                 >
                   <PhoneOff className="h-6 w-6" />
                 </button>
                 <button
+                  key="video-toggle-button"
                   onClick={toggleVideo}
                   className={`p-3 rounded-full transition-colors ${
                     !isVideoOn 
@@ -569,15 +578,16 @@ export default function VideoCall() {
             {/* Message Input */}
             <div className="p-4 border-t border-secondary-700">
               <div className="flex space-x-2">
-                <button className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
+                <button key="upload-button" className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
                   <Upload className="h-5 w-5" />
                 </button>
-                <button className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
+                <button key="file-button" className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
                   <FileText className="h-5 w-5" />
                 </button>
                 {/* Voice Input Button */}
                 {isVoiceSupported && (
                   <button
+                    key="voice-button"
                     onClick={isListening ? stopVoiceInput : startVoiceInput}
                     disabled={!isCallActive}
                     className={`p-2 rounded-lg transition-colors ${
@@ -603,6 +613,7 @@ export default function VideoCall() {
                   />
                 </div>
                 <button
+                  key="send-button"
                   onClick={handleSendMessage}
                   disabled={!newMessage.trim() || !isCallActive}
                   className="p-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"

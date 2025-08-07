@@ -9,119 +9,123 @@ interface AuthRequest extends Request {
 const router = express.Router();
 
 // @route   POST /api/video/start-stream
-// @desc    Start real-time video stream for AI tutor
+// @desc    Start a real-time tutor video stream
 // @access  Private
 router.post('/start-stream', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { sessionId, tutorName, initialMessage } = req.body;
-    const user = req.user;
+    const { sessionId, userMessage, tutorName, subject, language } = req.body;
+    const userId = req.user?.id;
 
-    if (!sessionId || !tutorName) {
+    if (!sessionId || !userMessage || !tutorName) {
       res.status(400).json({
         success: false,
-        error: 'Session ID and tutor name are required'
+        error: 'Missing required fields: sessionId, userMessage, tutorName'
       });
       return;
     }
 
-    // Start the video stream
-    const streamResponse = await videoStreamService.startTutorStream(
+    console.log('🎬 Starting video stream...');
+    console.log('🎬 Session ID:', sessionId);
+    console.log('🎬 User ID:', userId);
+    console.log('🎬 User message:', userMessage);
+    console.log('🎬 Tutor name:', tutorName);
+    console.log('🎬 Subject:', subject);
+    console.log('🎬 Language:', language);
+
+    const videoStream = await videoStreamService.startTutorStream(
       sessionId,
+      userMessage,
       tutorName,
-      initialMessage
+      subject || 'General',
+      language || 'English'
     );
 
     res.json({
       success: true,
-      message: 'Video stream started successfully',
-      stream: streamResponse
+      videoStream: {
+        videoUrl: videoStream.videoUrl,
+        audioUrl: videoStream.audioUrl,
+        isStreaming: videoStream.isStreaming
+      }
     });
 
-  } catch (error) {
-    console.error('Start stream error:', error);
+  } catch (error: any) {
+    console.error('❌ Error starting video stream:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to start video stream'
+      error: error.message || 'Failed to start video stream'
     });
   }
 });
 
 // @route   POST /api/video/talking-response
-// @desc    Generate talking response for AI tutor
+// @desc    Generate a real-time talking response from the AI tutor
 // @access  Private
 router.post('/talking-response', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { sessionId, message } = req.body;
-    const user = req.user;
+    const { sessionId, userMessage, tutorName, subject, language } = req.body;
+    const userId = req.user?.id;
 
-    if (!sessionId || !message) {
+    if (!sessionId || !userMessage || !tutorName) {
       res.status(400).json({
         success: false,
-        error: 'Session ID and message are required'
+        error: 'Missing required fields: sessionId, userMessage, tutorName'
       });
       return;
     }
 
-    // Generate talking response
-    const streamResponse = await videoStreamService.generateTalkingResponse(
+    console.log('🎬 Generating talking response...');
+    console.log('🎬 Session ID:', sessionId);
+    console.log('🎬 User ID:', userId);
+    console.log('🎬 User message:', userMessage);
+    console.log('🎬 Tutor name:', tutorName);
+
+    const response = await videoStreamService.generateTalkingResponse(
       sessionId,
-      message
+      userMessage,
+      tutorName,
+      subject || 'General',
+      language || 'English'
     );
 
     res.json({
       success: true,
-      message: 'Talking response generated successfully',
-      stream: streamResponse
+      videoStream: {
+        videoUrl: response.videoUrl,
+        audioUrl: response.audioUrl,
+        isStreaming: response.videoUrl.startsWith('streaming://')
+      },
+      aiResponse: response.aiResponse
     });
 
-  } catch (error) {
-    console.error('Talking response error:', error);
+  } catch (error: any) {
+    console.error('❌ Error generating talking response:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to generate talking response'
-    });
-  }
-});
-
-// @route   GET /api/video/stream-status/:sessionId
-// @desc    Get current stream status
-// @access  Private
-router.get('/stream-status/:sessionId', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const { sessionId } = req.params;
-    const user = req.user;
-
-    const streamStatus = videoStreamService.getStreamStatus(sessionId);
-
-    if (!streamStatus) {
-      res.status(404).json({
-        success: false,
-        error: 'No active stream found for this session'
-      });
-      return;
-    }
-
-    res.json({
-      success: true,
-      stream: streamStatus
-    });
-
-  } catch (error) {
-    console.error('Stream status error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get stream status'
+      error: error.message || 'Failed to generate talking response'
     });
   }
 });
 
 // @route   DELETE /api/video/stop-stream/:sessionId
-// @desc    Stop video stream
+// @desc    Stop a video stream
 // @access  Private
 router.delete('/stop-stream/:sessionId', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { sessionId } = req.params;
-    const user = req.user;
+    const userId = req.user?.id;
+
+    if (!sessionId) {
+      res.status(400).json({
+        success: false,
+        error: 'Session ID is required'
+      });
+      return;
+    }
+
+    console.log('🎬 Stopping video stream...');
+    console.log('🎬 Session ID:', sessionId);
+    console.log('🎬 User ID:', userId);
 
     videoStreamService.stopStream(sessionId);
 
@@ -130,74 +134,53 @@ router.delete('/stop-stream/:sessionId', authenticate, async (req: AuthRequest, 
       message: 'Video stream stopped successfully'
     });
 
-  } catch (error) {
-    console.error('Stop stream error:', error);
+  } catch (error: any) {
+    console.error('❌ Error stopping video stream:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to stop video stream'
+      error: error.message || 'Failed to stop video stream'
     });
   }
 });
 
-// @route   GET /api/video/available-tutors
-// @desc    Get available tutor avatars
+// @route   GET /api/video/stream-status/:sessionId
+// @desc    Get the status of a video stream
 // @access  Private
-router.get('/available-tutors', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/stream-status/:sessionId', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const tutors = await videoStreamService.getAvailableTutors();
+    const { sessionId } = req.params;
+    const userId = req.user?.id;
+
+    if (!sessionId) {
+      res.status(400).json({
+        success: false,
+        error: 'Session ID is required'
+      });
+      return;
+    }
+
+    console.log('🎬 Getting stream status...');
+    console.log('🎬 Session ID:', sessionId);
+    console.log('🎬 User ID:', userId);
+
+    const isActive = videoStreamService.isStreamActive(sessionId);
+    const activeStream = videoStreamService.getActiveStream(sessionId);
 
     res.json({
       success: true,
-      tutors
+      isActive,
+      videoStream: activeStream ? {
+        videoUrl: activeStream.videoUrl,
+        audioUrl: activeStream.audioUrl,
+        isStreaming: activeStream.isStreaming
+      } : null
     });
 
-  } catch (error) {
-    console.error('Available tutors error:', error);
+  } catch (error: any) {
+    console.error('❌ Error getting stream status:', error);
     res.status(500).json({
       success: false,
-      error: 'Failed to get available tutors'
-    });
-  }
-});
-
-// @route   GET /api/video/quality-options
-// @desc    Get stream quality options
-// @access  Private
-router.get('/quality-options', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const qualityOptions = videoStreamService.getQualityOptions();
-
-    res.json({
-      success: true,
-      qualityOptions
-    });
-
-  } catch (error) {
-    console.error('Quality options error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get quality options'
-    });
-  }
-});
-
-// @route   GET /api/video/streaming-supported
-// @desc    Check if streaming is supported
-// @access  Private
-router.get('/streaming-supported', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const isSupported = videoStreamService.isStreamingSupported();
-
-    res.json({
-      success: true,
-      streamingSupported: isSupported
-    });
-
-  } catch (error) {
-    console.error('Streaming support check error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to check streaming support'
+      error: error.message || 'Failed to get stream status'
     });
   }
 });

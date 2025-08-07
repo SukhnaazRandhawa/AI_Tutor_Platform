@@ -168,4 +168,4 @@ Remember: You are here to help ${userName} learn and understand concepts effecti
   }
 }
 
-export default new AIService(); 
+export default new AIService();

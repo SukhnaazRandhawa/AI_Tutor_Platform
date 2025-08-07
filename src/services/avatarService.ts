@@ -115,27 +115,32 @@ class AvatarService {
     audioUrl: string, 
     text: string
   ): Promise<string> {
-    // Try HeyGen first (user has correct avatar ID and voice ID), then D-ID as fallback
-    if (this.heygenApiKey) {
+    // Try D-ID first (user has 12 credits available), then HeyGen as fallback
+    if (this.didApiKey) {
       try {
-        console.log('🎬 Trying HeyGen first (correct avatar ID and voice ID)...');
-        return await this.generateHeyGenAvatar(avatarConfig, audioUrl, text);
+        console.log('🎬 Trying D-ID first (12 credits available)...');
+        const didResult = await this.generateDIDAvatar(avatarConfig, audioUrl, text);
+        console.log('✅ D-ID avatar generation successful!');
+        return didResult;
       } catch (error) {
-        console.error('HeyGen avatar generation failed:', error);
+        console.error('❌ D-ID avatar generation failed:', error);
+        console.log('🔄 Falling back to HeyGen...');
       }
     }
 
-    if (this.didApiKey) {
+    if (this.heygenApiKey) {
       try {
-        console.log('🎬 Trying D-ID as fallback (12 credits available)...');
-        return await this.generateDIDAvatar(avatarConfig, audioUrl, text);
+        console.log('🎬 Trying HeyGen as fallback...');
+        const heygenResult = await this.generateHeyGenAvatar(avatarConfig, audioUrl, text);
+        console.log('✅ HeyGen avatar generation successful!');
+        return heygenResult;
       } catch (error) {
-        console.error('D-ID avatar generation failed:', error);
+        console.error('❌ HeyGen avatar generation failed:', error);
       }
     }
 
     // Fallback to demo video
-    console.log('⚠️ Falling back to demo video (no API configured or failed)');
+    console.log('⚠️ Falling back to demo video (no API configured or all APIs failed)');
     const demoVideo = demoVideoService.getDemoVideo(avatarConfig.tutorName);
     return demoVideo.videoUrl;
   }
@@ -149,73 +154,110 @@ class AvatarService {
       console.log('🎬 Starting D-ID avatar generation...');
       console.log('🎬 Using D-ID API key:', this.didApiKey ? 'Present' : 'Missing');
       
+      // Simplified request to avoid circular structure error
+      const requestBody = {
+        script: {
+          type: 'text',
+          input: text,
+          provider: {
+            type: 'microsoft',
+            voice_id: 'en-US-JennyNeural'
+          }
+        },
+        config: {
+          fluent: true,
+          pad_audio: 0
+        },
+        source_url: 'https://create-images-results.d-id.com/DefaultPresenters/Sarah/image.jpeg'
+      };
+
+      console.log('🎬 D-ID request body:', JSON.stringify(requestBody, null, 2));
+
+      // Fix: Use proper Basic auth format
+      const authHeader = `Basic ${Buffer.from(this.didApiKey + ':').toString('base64')}`;
+
       const response = await axios.post(
         'https://api.d-id.com/talks',
-        {
-          script: {
-            type: 'text',
-            input: text,
-            provider: {
-              type: 'microsoft',
-              voice_id: 'en-US-JennyNeural'
-            }
-          },
-          config: {
-            fluent: true,
-            pad_audio: 0.0
-          },
-          source_url: 'https://create-images-results.d-id.com/DefaultPresenters/Sarah/image.jpeg'
-        },
+        requestBody,
         {
           headers: {
-            'Authorization': `Basic ${Buffer.from(this.didApiKey + ':').toString('base64')}`,
+            'Authorization': authHeader,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 30000
         }
       );
 
-      console.log('✅ D-ID API response received:', response.data);
-      
+      console.log('✅ D-ID video generation request successful!');
+      console.log('✅ Response status:', response.status);
+      console.log('✅ Response data:', response.data);
+
       if (response.data.id) {
-        // Wait for the video to be generated
         const talkId = response.data.id;
-        console.log('🎬 Waiting for D-ID video generation... Talk ID:', talkId);
+        console.log('✅ Talk ID received:', talkId);
         
-        // Poll for completion
+        // Poll for video completion
+        let videoUrl = '';
         let attempts = 0;
-        const maxAttempts = 30; // 30 seconds max wait
+        const maxAttempts = 30; // 5 minutes max (30 * 10 seconds)
         
         while (attempts < maxAttempts) {
-          await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+          console.log(`🔄 Polling for video completion (attempt ${attempts + 1}/${maxAttempts})...`);
           
-          const statusResponse = await axios.get(`https://api.d-id.com/talks/${talkId}`, {
-            headers: {
-              'Authorization': `Basic ${Buffer.from(this.didApiKey + ':').toString('base64')}`
+          try {
+            const statusResponse = await axios.get(
+              `https://api.d-id.com/talks/${talkId}`,
+              {
+                headers: {
+                  'Authorization': authHeader,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 10000
+              }
+            );
+            
+            console.log('✅ Status response status:', statusResponse.status);
+            console.log('✅ Status response data:', statusResponse.data);
+            
+            if (statusResponse.data.status === 'done') {
+              videoUrl = statusResponse.data.result_url;
+              console.log('✅ Video completed! URL:', videoUrl);
+              break;
+            } else if (statusResponse.data.status === 'error') {
+              throw new Error('Video generation failed');
+            } else if (statusResponse.data.status === 'created' || statusResponse.data.status === 'started') {
+              console.log('⏳ Video still processing...');
             }
-          });
-          
-          console.log('🎬 D-ID status:', statusResponse.data.status);
-          
-          if (statusResponse.data.status === 'done') {
-            const videoUrl = statusResponse.data.result_url;
-            console.log('✅ D-ID video generated successfully:', videoUrl);
-            return videoUrl;
-          } else if (statusResponse.data.status === 'error') {
-            throw new Error('D-ID video generation failed: ' + statusResponse.data.error?.message);
+            
+            // Wait 10 seconds before next poll
+            await new Promise(resolve => setTimeout(resolve, 10000));
+            attempts++;
+            
+          } catch (error: any) {
+            console.error('❌ Error polling video status:', error);
+            if (error.response) {
+              console.error('❌ Status response error:', error.response.status, error.response.data);
+            }
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, 10000));
           }
-          
-          attempts++;
         }
         
-        throw new Error('D-ID video generation timeout');
+        if (videoUrl) {
+          return videoUrl;
+        } else {
+          throw new Error('Video generation timed out');
+        }
       } else {
-        throw new Error('D-ID API did not return a talk ID');
+        throw new Error('No talk ID received from D-ID');
       }
-    } catch (error) {
-      console.error('❌ D-ID API error:', error);
-      console.log('⚠️ Falling back to demo video');
-      const demoVideo = demoVideoService.getDemoVideo(avatarConfig.tutorName);
-      return demoVideo.videoUrl;
+      
+    } catch (error: any) {
+      console.error('❌ D-ID avatar generation failed:', error);
+      if (error.response) {
+        console.error('❌ D-ID API error response:', error.response.status, error.response.data);
+      }
+      throw error;
     }
   }
 
@@ -227,6 +269,7 @@ class AvatarService {
     try {
       console.log('🎬 Starting HeyGen avatar generation...');
       console.log('🎬 Using HeyGen API key:', this.heygenApiKey ? 'Present' : 'Missing');
+      console.log('🎬 Text to generate:', text.substring(0, 100) + '...');
       
       // Use the user's actual avatar ID
       const avatarId = 'Brandon_expressive_public';
@@ -248,7 +291,9 @@ class AvatarService {
             }
           ],
           test: false,
-          aspect_ratio: '16:9'
+          // Force lower resolution for basic plan
+          aspect_ratio: '1:1',
+          resolution: '512x512'
         },
         {
           headers: {
@@ -260,66 +305,101 @@ class AvatarService {
       );
 
       console.log('✅ HeyGen video generation request successful!');
-      console.log('✅ Response:', response.data);
+      console.log('✅ Response status:', response.status);
+      console.log('✅ Response data:', response.data);
       
       if (response.data.data?.video_id) {
         const videoId = response.data.data.video_id;
         console.log('✅ Video ID received:', videoId);
         
-        // Poll for video completion
-        let videoUrl = '';
-        let attempts = 0;
-        const maxAttempts = 30; // 5 minutes max (30 * 10 seconds)
-        
-        while (attempts < maxAttempts) {
-          console.log(`🔄 Polling for video completion (attempt ${attempts + 1}/${maxAttempts})...`);
-          
-          try {
-            const statusResponse = await axios.get(
-              `https://api.heygen.com/v2/video/status/${videoId}`,
-              {
-                headers: {
-                  'X-Api-Key': this.heygenApiKey,
-                  'Content-Type': 'application/json'
-                },
-                timeout: 10000
-              }
-            );
-            
-            console.log('✅ Status response:', statusResponse.data);
-            
-            if (statusResponse.data.data?.status === 'completed') {
-              videoUrl = statusResponse.data.data.video_url;
-              console.log('✅ Video completed! URL:', videoUrl);
-              break;
-            } else if (statusResponse.data.data?.status === 'failed') {
-              throw new Error('Video generation failed');
-            }
-            
-            // Wait 10 seconds before next poll
-            await new Promise(resolve => setTimeout(resolve, 10000));
-            attempts++;
-            
-          } catch (error) {
-            console.error('❌ Error polling video status:', error);
-            attempts++;
-            await new Promise(resolve => setTimeout(resolve, 10000));
-          }
-        }
-        
-        if (videoUrl) {
-          return videoUrl;
-        } else {
-          throw new Error('Video generation timed out');
-        }
+        // Poll for video completion using the CORRECT v1 endpoint
+        const videoUrl = await this.pollHeyGenVideoStatus(videoId);
+        return videoUrl;
       } else {
         throw new Error('No video ID received from HeyGen');
       }
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ HeyGen avatar generation failed:', error);
+      if (error.response) {
+        console.error('❌ HeyGen API error response:', error.response.status, error.response.data);
+      }
       throw error;
     }
+  }
+
+  private async pollHeyGenVideoStatus(videoId: string): Promise<string> {
+    console.log('🔄 Starting HeyGen video status polling...');
+    let attempts = 0;
+    const maxAttempts = 60; // 5 minutes max (60 * 5 seconds)
+    
+    while (attempts < maxAttempts) {
+      console.log(`🔄 Polling for video completion (attempt ${attempts + 1}/${maxAttempts})...`);
+      
+      try {
+        // ✅ CORRECT: Use v1 endpoint with proper structure
+        const statusResponse = await axios.get(
+          `https://api.heygen.com/v1/video_status.get?video_id=${videoId}`,
+          {
+            headers: {
+              'X-Api-Key': this.heygenApiKey,
+              'Content-Type': 'application/json'
+            },
+            timeout: 10000
+          }
+        );
+        
+        console.log('✅ Status response status:', statusResponse.status);
+        console.log('✅ Status response data:', statusResponse.data);
+        
+        // ✅ CORRECT: Check for code: 100 first, then data.status
+        if (statusResponse.data.code === 100) {
+          const status = statusResponse.data.data?.status;
+          
+          if (status === 'completed') {
+            const videoUrl = statusResponse.data.data?.video_url;
+            if (videoUrl) {
+              console.log('✅ Video completed! URL:', videoUrl);
+              return videoUrl;
+            } else {
+              throw new Error('Video completed but no URL provided');
+            }
+          } else if (status === 'failed') {
+            const error = statusResponse.data.data?.error;
+            const errorMessage = error?.message || error?.detail || 'Unknown error';
+            throw new Error(`Video generation failed: ${errorMessage}`);
+          } else if (status === 'processing' || status === 'pending') {
+            console.log('⏳ Video still processing...');
+          } else {
+            console.log(`⏳ Unknown status: ${status}`);
+          }
+        } else {
+          console.error('❌ HeyGen API returned error code:', statusResponse.data.code);
+          console.error('❌ Error message:', statusResponse.data.message);
+          throw new Error(`HeyGen API error: ${statusResponse.data.message || 'Unknown error'}`);
+        }
+        
+        // Wait 5 seconds before next poll
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        attempts++;
+        
+      } catch (error: any) {
+        console.error('❌ Error polling video status:', error);
+        if (error.response) {
+          console.error('❌ Status response error:', error.response.status, error.response.data);
+          
+          // If it's a 404, the video might not exist or be invalid
+          if (error.response.status === 404) {
+            console.error('❌ Video ID not found or invalid:', videoId);
+            throw new Error('Video ID not found or invalid');
+          }
+        }
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+    
+    throw new Error('Video generation timed out');
   }
 
   async getAvailableVoices(): Promise<Array<{ id: string; name: string; gender: string }>> {

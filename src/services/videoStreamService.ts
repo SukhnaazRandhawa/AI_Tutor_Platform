@@ -1,191 +1,270 @@
-import avatarService from './avatarService';
+import { IMessage } from '../models/Session';
+import aiService from './aiService';
 import demoVideoService from './demoVideoService';
+import streamingAvatarService from './streamingAvatarService';
 
-interface VideoStreamConfig {
-  tutorName: string;
-  quality: 'low' | 'medium' | 'high';
-  frameRate: number;
-  resolution: {
-    width: number;
-    height: number;
-  };
-}
-
-interface StreamResponse {
+interface VideoStream {
   videoUrl: string;
   audioUrl: string;
-  duration: number;
-  isLive: boolean;
+  isStreaming: boolean;
+}
+
+interface Message {
+  id: string;
+  text: string;
+  sender: 'user' | 'tutor';
+  timestamp: Date;
 }
 
 class VideoStreamService {
-  private activeStreams: Map<string, StreamResponse> = new Map();
-  private streamConfigs: Map<string, VideoStreamConfig> = new Map();
+  private activeStreams: Map<string, VideoStream> = new Map();
+  private streamingSessions: Map<string, any> = new Map();
 
   async startTutorStream(
     sessionId: string,
+    userMessage: string,
     tutorName: string,
-    initialMessage?: string
-  ): Promise<StreamResponse> {
+    subject: string,
+    language: string
+  ): Promise<VideoStream> {
     try {
-      const config: VideoStreamConfig = {
-        tutorName,
-        quality: 'medium',
-        frameRate: 30,
-        resolution: { width: 1280, height: 720 }
-      };
-      this.streamConfigs.set(sessionId, config);
+      console.log('🎬 Starting real-time tutor stream...');
+      console.log('🎬 Session ID:', sessionId);
+      console.log('🎬 User message:', userMessage);
+      console.log('🎬 Tutor name:', tutorName);
+      console.log('🎬 Subject:', subject);
+      console.log('🎬 Language:', language);
 
-      // Try to use real avatar service first
-      if (avatarService.getServiceStatus().status === 'active') {
-        try {
-          const avatarConfig = avatarService.createAvatarConfig(tutorName);
-          const speechConfig = avatarService.createSpeechConfig(tutorName);
-          speechConfig.text = initialMessage || `Hello! I'm ${tutorName}, your AI tutor. How can I help you today?`;
+      // Check if streaming avatar service is available
+      const streamingStatus = streamingAvatarService.isStreamActive();
+      console.log('🎬 Streaming avatar service status:', streamingStatus);
 
-          const result = await avatarService.generateTalkingAvatar(
-            speechConfig.text,
-            avatarConfig,
-            speechConfig
-          );
-
-          const streamResponse: StreamResponse = {
-            videoUrl: result.videoUrl,
-            audioUrl: result.audioUrl,
-            duration: this.estimateDuration(speechConfig.text),
-            isLive: true
-          };
-          this.activeStreams.set(sessionId, streamResponse);
-          console.log('✅ Real avatar stream started');
-          return streamResponse;
-        } catch (error) {
-          console.error('Real avatar generation failed, falling back to demo:', error);
-        }
+      if (streamingStatus) {
+        console.log('🎬 Using real-time streaming avatar...');
+        return await this.startRealTimeStream(sessionId, userMessage, tutorName, subject, language);
+      } else {
+        console.log('⚠️ Streaming not available, falling back to demo video');
+        return await this.startDemoStream(sessionId, userMessage, tutorName, subject, language);
       }
+    } catch (error: any) {
+      console.error('❌ Error starting tutor stream:', error);
+      console.log('⚠️ Falling back to demo video due to error');
+      return await this.startDemoStream(sessionId, userMessage, tutorName, subject, language);
+    }
+  }
 
-      // Fallback to demo video
+  private async startRealTimeStream(
+    sessionId: string,
+    userMessage: string,
+    tutorName: string,
+    subject: string,
+    language: string
+  ): Promise<VideoStream> {
+    try {
+      console.log('🎬 Starting real-time streaming session...');
+
+      // Create message array for AI service
+      const messages: IMessage[] = [
+        {
+          sender: 'user',
+          content: userMessage,
+          timestamp: new Date()
+        }
+      ];
+
+      // Generate AI response
+      const aiResponse = await aiService.generateResponse(messages, 'User', tutorName, language, subject);
+      console.log('✅ AI response generated:', aiResponse.substring(0, 100) + '...');
+
+      // Create streaming session
+      const streamingSessionId = await streamingAvatarService.createStreamingSession({
+        apiKey: process.env.HEYGEN_API_KEY || '',
+        avatarId: 'Brandon_expressive_public', // Use the same avatar
+        voiceId: '8661cd40d6c44c709e2d0031c0186ada' // Use the same voice
+      });
+
+      console.log('✅ Streaming session created:', streamingSessionId);
+
+      // Connect to stream
+      await streamingAvatarService.connectToStream(
+        streamingSessionId,
+        (videoFrame) => {
+          // Handle video frame updates
+          console.log('📹 Video frame received');
+          // Here you would update the video element with the frame
+        },
+        (audioFrame) => {
+          // Handle audio frame updates
+          console.log('🔊 Audio frame received');
+          // Here you would play the audio frame
+        }
+      );
+
+      // Send AI response to stream
+      await streamingAvatarService.sendTextToStream(streamingSessionId, aiResponse);
+
+      // Store streaming session
+      this.streamingSessions.set(sessionId, {
+        streamingSessionId,
+        isActive: true
+      });
+
+      // Return streaming video stream
+      const videoStream: VideoStream = {
+        videoUrl: `streaming://${streamingSessionId}`, // Special URL for streaming
+        audioUrl: `streaming://${streamingSessionId}`, // Special URL for streaming
+        isStreaming: true
+      };
+
+      this.activeStreams.set(sessionId, videoStream);
+      console.log('✅ Real-time streaming started successfully');
+      console.log('✅ Video URL:', videoStream.videoUrl);
+      console.log('✅ Audio URL:', videoStream.audioUrl);
+
+      return videoStream;
+
+    } catch (error: any) {
+      console.error('❌ Error in real-time streaming:', error);
+      throw error;
+    }
+  }
+
+  private async startDemoStream(
+    sessionId: string,
+    userMessage: string,
+    tutorName: string,
+    subject: string,
+    language: string
+  ): Promise<VideoStream> {
+    try {
+      console.log('🎬 Starting demo video stream...');
+
+      // Create message array for AI service
+      const messages: IMessage[] = [
+        {
+          sender: 'user',
+          content: userMessage,
+          timestamp: new Date()
+        }
+      ];
+
+      // Generate AI response
+      const aiResponse = await aiService.generateResponse(messages, 'User', tutorName, language, subject);
+      console.log('✅ AI response generated:', aiResponse.substring(0, 100) + '...');
+
+      // Get demo video
       const demoVideo = demoVideoService.getDemoVideo(tutorName);
-      const streamResponse: StreamResponse = {
+      
+      const videoStream: VideoStream = {
         videoUrl: demoVideo.videoUrl,
         audioUrl: demoVideo.audioUrl,
-        duration: demoVideo.duration,
-        isLive: true
+        isStreaming: false
       };
-      this.activeStreams.set(sessionId, streamResponse);
+
+      this.activeStreams.set(sessionId, videoStream);
       console.log('✅ Demo video stream started');
-      return streamResponse;
-    } catch (error) {
-      console.error('Failed to start tutor stream:', error);
-      throw new Error('Failed to start video stream');
+      console.log('✅ Video URL:', videoStream.videoUrl);
+      console.log('✅ Audio URL:', videoStream.audioUrl);
+
+      return videoStream;
+
+    } catch (error: any) {
+      console.error('❌ Error in demo streaming:', error);
+      throw error;
     }
   }
 
   async generateTalkingResponse(
     sessionId: string,
-    message: string
-  ): Promise<StreamResponse> {
+    userMessage: string,
+    tutorName: string,
+    subject: string,
+    language: string
+  ): Promise<{ videoUrl: string; audioUrl: string; aiResponse: string }> {
     try {
-      const config = this.streamConfigs.get(sessionId);
-      if (!config) {
-        throw new Error('No active stream configuration found');
-      }
+      console.log('🎬 Generating talking response...');
+      console.log('🎬 Session ID:', sessionId);
+      console.log('🎬 User message:', userMessage);
 
-      // Try to use real avatar service first
-      if (avatarService.getServiceStatus().status === 'active') {
-        try {
-          const avatarConfig = avatarService.createAvatarConfig(config.tutorName);
-          const speechConfig = avatarService.createSpeechConfig(config.tutorName);
-          speechConfig.text = message;
-
-          const result = await avatarService.generateTalkingAvatar(
-            message,
-            avatarConfig,
-            speechConfig
-          );
-
-          const streamResponse: StreamResponse = {
-            videoUrl: result.videoUrl,
-            audioUrl: result.audioUrl,
-            duration: this.estimateDuration(message),
-            isLive: true
-          };
-          this.activeStreams.set(sessionId, streamResponse);
-          console.log('✅ Real avatar response generated');
-          return streamResponse;
-        } catch (error) {
-          console.error('Real avatar generation failed, falling back to demo:', error);
+      // Create message array for AI service
+      const messages: IMessage[] = [
+        {
+          sender: 'user',
+          content: userMessage,
+          timestamp: new Date()
         }
+      ];
+
+      // Check if we have an active streaming session
+      const streamingSession = this.streamingSessions.get(sessionId);
+      
+      if (streamingSession && streamingSession.isActive) {
+        console.log('🎬 Using real-time streaming for response...');
+        
+        // Generate AI response
+        const aiResponse = await aiService.generateResponse(messages, 'User', tutorName, language, subject);
+        console.log('✅ AI response generated:', aiResponse.substring(0, 100) + '...');
+
+        // Send to streaming session
+        await streamingAvatarService.sendTextToStream(streamingSession.streamingSessionId, aiResponse);
+        console.log('✅ Response sent to streaming session');
+
+        return {
+          videoUrl: `streaming://${streamingSession.streamingSessionId}`,
+          audioUrl: `streaming://${streamingSession.streamingSessionId}`,
+          aiResponse
+        };
+      } else {
+        console.log('⚠️ No active streaming session, using demo response...');
+        
+        // Generate AI response
+        const aiResponse = await aiService.generateResponse(messages, 'User', tutorName, language, subject);
+        console.log('✅ AI response generated:', aiResponse.substring(0, 100) + '...');
+
+        // Get demo video
+        const demoVideo = demoVideoService.getDemoVideo(tutorName);
+        
+        return {
+          videoUrl: demoVideo.videoUrl,
+          audioUrl: demoVideo.audioUrl,
+          aiResponse
+        };
       }
 
-      // Fallback to demo video
-      const demoVideo = demoVideoService.generateTalkingResponse(config.tutorName, message);
-      const streamResponse: StreamResponse = {
-        videoUrl: demoVideo.videoUrl,
-        audioUrl: demoVideo.audioUrl,
-        duration: demoVideo.duration,
-        isLive: true
-      };
-      this.activeStreams.set(sessionId, streamResponse);
-      console.log('✅ Demo video response generated');
-      return streamResponse;
-    } catch (error) {
-      console.error('Failed to generate talking response:', error);
-      throw new Error('Failed to generate talking response');
+    } catch (error: any) {
+      console.error('❌ Error generating talking response:', error);
+      throw error;
     }
   }
 
-  getStreamStatus(sessionId: string): StreamResponse | null {
-    return this.activeStreams.get(sessionId) || null;
-  }
-
   stopStream(sessionId: string): void {
-    this.activeStreams.delete(sessionId);
-    this.streamConfigs.delete(sessionId);
-    console.log(`Stream stopped for session: ${sessionId}`);
-  }
-
-  private estimateDuration(text: string): number {
-    // Rough estimate: 150 words per minute
-    const words = text.split(' ').length;
-    return Math.max(2, Math.ceil(words / 2.5)); // Minimum 2 seconds
-  }
-
-  async getAvailableTutors(): Promise<Array<{
-    name: string;
-    gender: 'male' | 'female';
-    specialty: string[];
-    avatarUrl: string;
-  }>> {
-    return demoVideoService.getAvailableTutors();
-  }
-
-  isStreamingSupported(): boolean {
-    return avatarService.getServiceStatus().status === 'active' || true; // Always true for demo
-  }
-
-  getQualityOptions(): Array<{
-    name: string;
-    value: 'low' | 'medium' | 'high';
-    resolution: { width: number; height: number };
-    frameRate: number;
-  }> {
-    return [
-      { name: 'Low Quality', value: 'low', resolution: { width: 640, height: 480 }, frameRate: 24 },
-      { name: 'Medium Quality', value: 'medium', resolution: { width: 1280, height: 720 }, frameRate: 30 },
-      { name: 'High Quality', value: 'high', resolution: { width: 1920, height: 1080 }, frameRate: 60 }
-    ];
-  }
-
-  getServiceStatus(): { status: string; features: any } {
-    const avatarStatus = avatarService.getServiceStatus();
-    return {
-      status: avatarStatus.status === 'active' ? 'active' : 'demo',
-      features: {
-        ...avatarStatus.features,
-        realTimeStreaming: true,
-        demoMode: avatarStatus.status !== 'active'
+    try {
+      console.log('🎬 Stopping stream for session:', sessionId);
+      
+      // Stop streaming session if active
+      const streamingSession = this.streamingSessions.get(sessionId);
+      if (streamingSession && streamingSession.isActive) {
+        streamingAvatarService.disconnectStream();
+        streamingSession.isActive = false;
+        console.log('✅ Streaming session stopped');
       }
-    };
+
+      // Remove from active streams
+      this.activeStreams.delete(sessionId);
+      this.streamingSessions.delete(sessionId);
+      
+      console.log('✅ Stream stopped for session:', sessionId);
+    } catch (error: any) {
+      console.error('❌ Error stopping stream:', error);
+    }
+  }
+
+  getActiveStream(sessionId: string): VideoStream | undefined {
+    return this.activeStreams.get(sessionId);
+  }
+
+  isStreamActive(sessionId: string): boolean {
+    return this.activeStreams.has(sessionId);
   }
 }
 

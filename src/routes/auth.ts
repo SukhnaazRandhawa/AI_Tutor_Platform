@@ -54,15 +54,15 @@ router.post('/register', [
       aiTutorName: aiTutorName || 'AI Tutor'
     });
 
-    // Generate token
-    const userId = user._id?.toString() || '';
+    // Generate token - safely handle user._id
+    const userId = (user as any)._id?.toString() || '';
     const token = generateToken(userId);
 
     res.status(201).json({
       success: true,
       token,
       user: {
-        id: user._id,
+        id: (user as any)._id,
         name: user.name,
         email: user.email,
         language: user.language,
@@ -117,15 +117,15 @@ router.post('/login', [
       return;
     }
 
-    // Generate token
-    const userId = user._id?.toString() || '';
+    // Generate token - safely handle user._id
+    const userId = (user as any)._id?.toString() || '';
     const token = generateToken(userId);
 
     res.json({
       success: true,
       token,
       user: {
-        id: user._id,
+        id: (user as any)._id,
         name: user.name,
         email: user.email,
         language: user.language,

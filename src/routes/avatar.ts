@@ -139,22 +139,17 @@ router.post('/config',
 
 // @route   GET /api/avatar/status
 // @desc    Get avatar service status
-// @access  Private
+// @access  Public
 router.get('/status', 
-  authenticate,
-  async (req: AuthRequest, res: Response): Promise<void> => {
+  async (req: Request, res: Response): Promise<void> => {
     try {
-      const user = req.user;
+      const serviceStatus = avatarService.getServiceStatus();
 
       res.json({
         success: true,
-        status: 'active',
-        features: {
-          textToSpeech: true,
-          avatarGeneration: true,
-          voiceSynthesis: true
-        },
-        message: 'Avatar service is operational'
+        status: serviceStatus.status,
+        features: serviceStatus.features,
+        message: serviceStatus.status === 'active' ? 'Avatar service is operational' : 'Avatar service is limited (using fallbacks)'
       });
 
     } catch (error) {
