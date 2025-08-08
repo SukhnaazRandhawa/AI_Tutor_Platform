@@ -76,6 +76,11 @@ export default function VideoCall() {
   const [avatarReady, setAvatarReady] = useState(false);
   const [streamingError, setStreamingError] = useState<string | null>(null);
   
+  // Add state for reconnection
+  const [reconnectionAttempts, setReconnectionAttempts] = useState(0);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const maxReconnectionAttempts = 3;
+  
   // Refs
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
@@ -192,12 +197,18 @@ export default function VideoCall() {
     return null;
   }
   
-  const tryStartHeyGenStreaming = async () => {
+  // Enhanced tryStartHeyGenStreaming with reconnection logic
+  const tryStartHeyGenStreaming = async (isReconnection = false) => {
     try {
       setStreamingError(null);
-      console.log('🎬 Starting HeyGen streaming process...');
+      if (isReconnection) {
+        setIsReconnecting(true);
+        console.log('🔄 Attempting to reconnect avatar...');
+      } else {
+        console.log('🎬 Starting HeyGen streaming process...');
+      }
       
-      // 1) Ask backend for one-time token
+      // Get fresh token for each attempt
       const { data } = await heygenAPI.createStreamingToken();
       const token: string | undefined = data?.token;
       if (!token) {
@@ -206,25 +217,64 @@ export default function VideoCall() {
 
       console.log('🎬 HeyGen token received:', token.substring(0, 20) + '...');
 
-      // 2) Init SDK
+      // Clean up previous instance
+      if (streamingAvatarRef.current) {
+        try {
+          await streamingAvatarRef.current.stopAvatar?.();
+        } catch (e) {
+          console.log('Error stopping previous avatar:', e);
+        }
+      }
+
+      // Init new SDK instance
       const sdk = new StreamingAvatar({ token });
       streamingAvatarRef.current = sdk;
 
       console.log('🎬 HeyGen SDK initialized');
 
-      // 3) Bind events - FIXED: Better event handling
+      // Enhanced event handlers with reconnection logic
       sdk.on(StreamingEvents.STREAM_READY, () => {
         console.log('🎬 HeyGen stream ready!');
         setStreamingReady(true);
+        setReconnectionAttempts(0); // Reset on successful connection
+        setIsReconnecting(false);
       });
       
       sdk.on(StreamingEvents.STREAM_DISCONNECTED, () => {
         console.log('🎬 HeyGen stream disconnected');
         setStreamingReady(false);
         setAvatarReady(false);
+        
+        // Auto-reconnection logic
+        if (isCallActive && reconnectionAttempts < maxReconnectionAttempts) {
+          console.log(`🔄 Auto-reconnecting in 3 seconds... (Attempt ${reconnectionAttempts + 1}/${maxReconnectionAttempts})`);
+          setTimeout(() => {
+            setReconnectionAttempts(prev => prev + 1);
+            tryStartHeyGenStreaming(true);
+          }, 3000);
+        } else if (reconnectionAttempts >= maxReconnectionAttempts) {
+          console.log('❌ Max reconnection attempts reached');
+          setStreamingError('Avatar disconnected. Max reconnection attempts reached.');
+          setIsReconnecting(false);
+          toast.error('Avatar connection lost. Please restart the call.');
+        }
       });
 
-      // FIXED: Added avatar ready event
+      // Add connection quality monitoring
+      sdk.on(StreamingEvents.STREAM_READY, () => {
+        console.log('🎬 Stream quality check...');
+        // Monitor connection quality
+        setInterval(() => {
+          if (sdk && streamingReady) {
+            // Check if stream is still active - simplified check
+            if (!isCallActive) {
+              console.log('⚠️ Call no longer active, stopping monitoring');
+              return;
+            }
+          }
+        }, 30000); // Check every 30 seconds
+      });
+
       sdk.on(StreamingEvents.AVATAR_START_TALKING, () => {
         console.log('🎬 Avatar started talking');
       });
@@ -233,57 +283,97 @@ export default function VideoCall() {
         console.log('🎬 Avatar stopped talking');
       });
 
-      // 4) Create + start avatar
+      // Create avatar with error handling
       const avatarId = process.env.REACT_APP_HEYGEN_AVATAR_ID || 'Graham_ProfessionalLook2_public';
       console.log('🎬 Creating HeyGen avatar with ID:', avatarId);
       
       await sdk.createStartAvatar({
-        quality: AvatarQuality.Low,
+        quality: AvatarQuality.Low, // Use Low for better stability
         avatarName: avatarId,
-        language: 'en',
+        language: 'en'
       });
 
       console.log('🎬 HeyGen avatar created successfully');
       setAvatarReady(true);
 
-      // FIXED: Better container attachment logic
-      // Wait a bit for the container to be ready
+      // Enhanced container attachment with size preservation
       setTimeout(() => {
         if (avatarContainerRef.current && sdk) {
           console.log('🎬 Attempting to attach avatar to container...');
-          console.log('🎬 Container dimensions:', {
-            width: avatarContainerRef.current.offsetWidth,
-            height: avatarContainerRef.current.offsetHeight
-          });
+          
+          // Store original container dimensions
+          const originalWidth = avatarContainerRef.current.offsetWidth;
+          const originalHeight = avatarContainerRef.current.offsetHeight;
+          
+          console.log('🎬 Container dimensions:', { width: originalWidth, height: originalHeight });
 
-          // Check if SDK has a video stream to attach
           if (sdk.mediaStream) {
             console.log('🎬 Media stream available, creating video element');
             
-            // Create video element and attach stream
+            // Create video element with size preservation
             const video = document.createElement('video');
             video.autoplay = true;
             video.playsInline = true;
             video.muted = false;
-            video.style.width = '100%';
-            video.style.height = '100%';
-            video.style.objectFit = 'cover';
+            video.style.cssText = `
+              width: 100% !important;
+              height: 100% !important;
+              object-fit: cover !important;
+              position: absolute !important;
+              top: 0 !important;
+              left: 0 !important;
+              background: #000 !important;
+              min-width: ${originalWidth}px !important;
+              min-height: ${originalHeight}px !important;
+            `;
             video.srcObject = sdk.mediaStream;
+            
+            // Add CSS class for additional styling
+            video.className = 'heygen-avatar-video';
             
             // Clear container and add video
             avatarContainerRef.current.innerHTML = '';
             avatarContainerRef.current.appendChild(video);
             
-            console.log('🎬 Video element attached to container');
+            // Ensure container maintains its size
+            avatarContainerRef.current.style.cssText += `
+              width: ${originalWidth}px !important;
+              height: ${originalHeight}px !important;
+              min-width: ${originalWidth}px !important;
+              min-height: ${originalHeight}px !important;
+              position: relative !important;
+              overflow: hidden !important;
+            `;
+            
+            console.log('🎬 Video element attached with size preservation');
+            
+            // Monitor for size changes and fix them
+            const sizeObserver = new ResizeObserver(() => {
+              if (avatarContainerRef.current && video) {
+                const currentWidth = avatarContainerRef.current.offsetWidth;
+                const currentHeight = avatarContainerRef.current.offsetHeight;
+                
+                if (currentWidth < originalWidth * 0.8 || currentHeight < originalHeight * 0.8) {
+                  console.log('🔧 Fixing avatar size shrinkage');
+                  avatarContainerRef.current.style.width = originalWidth + 'px';
+                  avatarContainerRef.current.style.height = originalHeight + 'px';
+                  video.style.width = '100%';
+                  video.style.height = '100%';
+                }
+              }
+            });
+            
+            sizeObserver.observe(avatarContainerRef.current);
+            
+            // Store cleanup function
+            (video as any)._cleanup = () => sizeObserver.disconnect();
+            
           } else if ((sdk as any).attach) {
-            // Fallback to SDK's attach method if available
             console.log('🎬 Using SDK attach method');
             (sdk as any).attach(avatarContainerRef.current);
           } else {
-            console.warn('🎬 No media stream or attach method available');
+            console.warn('�� No media stream or attach method available');
           }
-        } else {
-          console.error('🎬 Avatar container not ready or SDK not available');
         }
       }, 1000);
 
@@ -293,12 +383,29 @@ export default function VideoCall() {
       setStreamingError(err.message || 'Failed to initialize avatar');
       setStreamingReady(false);
       setAvatarReady(false);
+      setIsReconnecting(false);
       
-      // Show user-friendly error
-      toast.error('Avatar failed to load. Using fallback display.');
+      // Auto-retry logic for connection failures
+      if (isCallActive && reconnectionAttempts < maxReconnectionAttempts && !isReconnection) {
+        console.log('🔄 Retrying avatar connection in 5 seconds...');
+        setTimeout(() => {
+          setReconnectionAttempts(prev => prev + 1);
+          tryStartHeyGenStreaming(true);
+        }, 5000);
+      } else {
+        toast.error('Avatar failed to load. Using fallback display.');
+      }
       
       return false;
     }
+  };
+
+  // Add manual reconnect function
+  const handleManualReconnect = async () => {
+    if (!isCallActive) return;
+    
+    setReconnectionAttempts(0);
+    await tryStartHeyGenStreaming(true);
   };
 
   const initializeVoiceRecognition = () => {
@@ -570,6 +677,11 @@ export default function VideoCall() {
                   Avatar Error: {streamingError}
                 </p>
               )}
+              {isReconnecting && (
+                <p className="text-xs text-yellow-400">
+                  🔄 Reconnecting... (Attempt {reconnectionAttempts + 1}/{maxReconnectionAttempts})
+                </p>
+              )}
             </div>
           </div>
             
@@ -649,6 +761,7 @@ export default function VideoCall() {
                     <div className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
                       Stream: {streamingReady ? 'Ready' : 'Not Ready'} | 
                       Avatar: {avatarReady ? 'Ready' : 'Not Ready'}
+                      {isReconnecting && ` | Reconnecting: ${reconnectionAttempts}/${maxReconnectionAttempts}`}
                     </div>
                   )}
                 </div>
@@ -759,6 +872,24 @@ export default function VideoCall() {
                 >
                   {isVideoOn ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
                 </button>
+                {/* Manual reconnect button */}
+                {streamingError && (
+                  <button
+                    key="reconnect-button"
+                    onClick={handleManualReconnect}
+                    disabled={isReconnecting}
+                    className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50"
+                    title="Reconnect Avatar"
+                  >
+                    <div className="h-6 w-6 flex items-center justify-center">
+                      {isReconnecting ? (
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      ) : (
+                        <span className="text-sm">🔄</span>
+                      )}
+                    </div>
+                  </button>
+                )}
               </div>
             )}
           </motion.div>
