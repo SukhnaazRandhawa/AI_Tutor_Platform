@@ -1,26 +1,27 @@
+import StreamingAvatar, { AvatarQuality, StreamingEvents } from '@heygen/streaming-avatar';
 import { motion } from 'framer-motion';
 import {
-    ArrowLeft,
-    FileText,
-    MessageSquare,
-    Mic,
-    MicOff,
-    Pause,
-    Phone,
-    PhoneOff,
-    Play,
-    Send,
-    Upload,
-    Video,
-    VideoOff,
-    Volume2,
-    VolumeX
+  ArrowLeft,
+  FileText,
+  MessageSquare,
+  Mic,
+  MicOff,
+  Pause,
+  Phone,
+  PhoneOff,
+  Play,
+  Send,
+  Upload,
+  Video,
+  VideoOff,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useAuth } from '../components/AuthProvider';
-import { sessionAPI, videoAPI } from '../services/api';
+import { heygenAPI, sessionAPI, videoAPI } from '../services/api';
 
 // TypeScript declarations for Web Speech API
 declare global {
@@ -50,37 +51,7 @@ export default function VideoCall() {
   const { user, token, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   
-  // Check if user is authenticated
-  useEffect(() => {
-    console.log('🔐 Auth state:', { token: !!token, user: !!user, authLoading });
-    if (!authLoading && (!token || !user)) {
-      console.log('❌ User not authenticated, redirecting to login');
-      navigate('/login');
-      return;
-    }
-    if (token && user) {
-      console.log('✅ User authenticated:', user.name);
-    }
-  }, [token, user, authLoading, navigate]);
-  
-  // Show loading screen while checking authentication
-  if (authLoading) {
-    return (
-      <div className="h-screen bg-secondary-900 flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
-          <p className="text-white">Loading...</p>
-        </div>
-      </div>
-    );
-  }
-  
-  // Don't render if not authenticated
-  if (!token || !user) {
-    return null;
-  }
-  
-  // State management
+  // State management - ALL HOOKS MUST BE AT THE TOP
   const [isCallActive, setIsCallActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
@@ -100,17 +71,56 @@ export default function VideoCall() {
   const [isListening, setIsListening] = useState(false);
   const [isVoiceSupported, setIsVoiceSupported] = useState(false);
   
+  // HeyGen Streaming SDK refs/state
+  const [streamingReady, setStreamingReady] = useState(false);
+  
   // Refs
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
   const recognitionRef = useRef<any>(null);
-
+  const streamingAvatarRef = useRef<any>(null);
+  const avatarContainerRef = useRef<HTMLDivElement>(null);
+  
+  // ALL useEffect hooks must be before any early returns
+  // Check if user is authenticated
+  useEffect(() => {
+    console.log('🔐 Auth state:', { token: !!token, user: !!user, authLoading });
+    if (!authLoading && (!token || !user)) {
+      console.log('❌ User not authenticated, redirecting to login');
+      navigate('/login');
+      return;
+    }
+    if (token && user) {
+      console.log('✅ User authenticated:', user.name);
+    }
+  }, [token, user, authLoading, navigate]);
+  
   // Initialize session
   useEffect(() => {
     if (currentSessionId) {
-      initializeSession();
+      // Initialize session logic
+      const initSession = async () => {
+        try {
+          setIsLoading(true);
+          const response = await sessionAPI.getActiveSession();
+          if (response.data.success) {
+            setCurrentSessionId(response.data.session.id);
+            setMessages(response.data.session.messages || []);
+            setIsCallActive(true);
+            
+            // Start video stream
+            await startVideoStream(response.data.session.id);
+          }
+        } catch (error: any) {
+          console.error('Failed to get session:', error);
+          setIsCallActive(false);
+        } finally {
+          setIsLoading(false);
+        }
+      };
+      initSession();
     } else if (sessionId) {
       // If sessionId is provided via URL params, use it
       setCurrentSessionId(sessionId);
@@ -134,7 +144,12 @@ export default function VideoCall() {
   // Handle video stream updates
   useEffect(() => {
     if (videoStream && videoRef.current) {
-      videoRef.current.src = videoStream.videoUrl;
+      const url = videoStream.videoUrl || '';
+      if (!/^https?:\/\//i.test(url)) {
+        // Ignore non-HTTP(S) placeholders like "streaming://" to avoid browser errors
+        return;
+      }
+      videoRef.current.src = url;
       videoRef.current.load();
     }
   }, [videoStream]);
@@ -142,10 +157,91 @@ export default function VideoCall() {
   // Handle audio stream updates
   useEffect(() => {
     if (videoStream && audioRef.current) {
-      audioRef.current.src = videoStream.audioUrl;
+      const url = videoStream.audioUrl || '';
+      if (!/^https?:\/\//i.test(url)) {
+        // Ignore non-HTTP(S) placeholders like "streaming://" to avoid browser errors
+        return;
+      }
+      audioRef.current.src = url;
       audioRef.current.load();
     }
   }, [videoStream]);
+  
+  // Show loading screen while checking authentication
+  if (authLoading) {
+    return (
+      <div className="h-screen bg-secondary-900 flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600 mx-auto mb-4"></div>
+          <p className="text-white">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Don't render if not authenticated
+  if (!token || !user) {
+    return null;
+  }
+  
+  const tryStartHeyGenStreaming = async () => {
+    try {
+      // 1) Ask backend for one-time token
+      const { data } = await heygenAPI.createStreamingToken();
+      const token: string | undefined = data?.token;
+      if (!token) {
+        console.warn('No HeyGen streaming token returned; falling back to demo video.');
+        return false;
+      }
+
+      console.log('🎬 HeyGen token received:', token.substring(0, 20) + '...');
+
+      // 2) Init SDK
+      const sdk = new StreamingAvatar({ token });
+      streamingAvatarRef.current = sdk;
+
+      console.log('🎬 HeyGen SDK initialized');
+
+      // 3) Bind events
+      sdk.on(StreamingEvents.STREAM_READY, () => {
+        console.log('🎬 HeyGen stream ready!');
+        setStreamingReady(true);
+      });
+      sdk.on(StreamingEvents.STREAM_DISCONNECTED, () => {
+        console.log('🎬 HeyGen stream disconnected');
+        setStreamingReady(false);
+      });
+
+      // 4) Create + start avatar (use a public avatar if you have id; otherwise defaults)
+      // Use the actual avatar ID from environment or fallback to a public one
+      const avatarId = process.env.REACT_APP_HEYGEN_AVATAR_ID || 'Graham_ProfessionalLook2_public';
+      console.log('🎬 Creating HeyGen avatar with ID:', avatarId);
+      
+      await sdk.createStartAvatar({
+        quality: AvatarQuality.Low,
+        avatarName: avatarId, // Use the exact avatar ID that worked in API call
+        language: 'en',
+      });
+
+      console.log('🎬 HeyGen avatar created successfully');
+
+      // 5) Attach to DOM if container exists
+      if (avatarContainerRef.current && (sdk as any).attach) {
+        console.log('🎬 Attaching HeyGen avatar to DOM');
+        (sdk as any).attach(avatarContainerRef.current);
+      }
+      return true;
+    } catch (err: any) {
+      console.error('❌ HeyGen streaming init failed; falling back to demo video.', err);
+      console.error('❌ Error details:', {
+        name: err?.name,
+        message: err?.message,
+        status: err?.status,
+        response: err?.response
+      });
+      return false;
+    }
+  };
 
   const initializeVoiceRecognition = () => {
     // Check if browser supports speech recognition
@@ -184,31 +280,18 @@ export default function VideoCall() {
     }
   };
 
-  const initializeSession = async () => {
-    try {
-      setIsLoading(true);
-      const response = await sessionAPI.getActiveSession();
-      if (response.data.success) {
-        setCurrentSessionId(response.data.session.id);
-        setMessages(response.data.session.messages || []);
-        setIsCallActive(true);
-        
-        // Start video stream
-        await startVideoStream(response.data.session.id);
-      }
-    } catch (error: any) {
-      console.error('Failed to get session:', error);
-      setIsCallActive(false);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   const startVideoStream = async (sessionId: string) => {
     try {
       console.log('🎬 Starting video stream for session:', sessionId);
       console.log('🎬 User:', user?.name);
       console.log('🎬 Tutor:', user?.aiTutorName);
+
+      // Try real-time streaming first
+      const started = await tryStartHeyGenStreaming();
+      if (started) {
+        setIsVideoPlaying(true);
+        return; // streaming handles the UI
+      }
       
       const response = await videoAPI.startStream(sessionId, user?.aiTutorName || 'John', `Hello ${user?.name}! I'm ${user?.aiTutorName}, your AI tutor. How can I help you today?`);
       console.log('✅ Video stream response:', response.data);
@@ -266,10 +349,15 @@ export default function VideoCall() {
         // Stop video stream
         await videoAPI.stopStream(currentSessionId);
       }
+      // Stop HeyGen streaming if active
+      try {
+        await streamingAvatarRef.current?.stopAvatar?.();
+      } catch {}
       setIsCallActive(false);
       setCurrentSessionId(null);
       setMessages([]);
       setVideoStream(null);
+      setStreamingReady(false);
       setIsVideoPlaying(false);
       toast.success('Call ended');
       navigate('/dashboard');
@@ -458,7 +546,9 @@ export default function VideoCall() {
           >
             {/* Main Video Display */}
             <div className="flex-1 bg-secondary-800 rounded-xl border border-secondary-700 flex items-center justify-center mb-4 relative overflow-hidden">
-              {isCallActive && videoStream ? (
+              {isCallActive && streamingReady ? (
+                <div ref={avatarContainerRef} className="w-full h-full" />
+              ) : isCallActive && videoStream ? (
                 <div className="w-full h-full relative">
                   <video
                     ref={videoRef}
@@ -588,9 +678,9 @@ export default function VideoCall() {
                   <p className="text-sm">Start the call to begin chatting</p>
                 </div>
               ) : (
-                messages.map((message) => (
+                messages.map((message, idx) => (
                   <motion.div
-                    key={message.id}
+                    key={`${message.id || message.timestamp || 'msg'}-${idx}`}
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
                     className={`flex ${message.sender === 'user' ? 'justify-end' : 'justify-start'}`}

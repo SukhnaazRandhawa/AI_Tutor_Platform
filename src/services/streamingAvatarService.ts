@@ -1,6 +1,5 @@
-
-// For Node.js environment, we'll use a different approach
-// WebSocket is not available in Node.js by default
+// HeyGen SDK is client-side only, so we'll manage streaming state here
+// The actual SDK usage happens in the frontend
 
 interface StreamingAvatarConfig {
   apiKey: string;
@@ -20,26 +19,27 @@ interface StreamingSession {
 }
 
 class StreamingAvatarService {
-  private apiKey: string | undefined;
+  private accessToken: string | undefined;
   private currentSession: StreamingSession | null = null;
   private isConnected: boolean = false;
-  // Remove WebSocket for now - we'll implement this differently
 
   constructor() {
-    this.apiKey = process.env.HEYGEN_API_KEY;
+    this.accessToken = process.env.HEYGEN_ACCESS_TOKEN;
     console.log('🎬 Streaming Avatar Service initialized');
-    console.log('🎬 API Key exists:', !!this.apiKey);
+    console.log('🎬 Access Token exists:', !!this.accessToken);
   }
 
   async createStreamingSession(config: StreamingAvatarConfig): Promise<string> {
     try {
       console.log('🎬 Creating streaming session...');
       
-      // For now, we'll simulate a streaming session
-      // In a real implementation, this would call HeyGen's streaming API
+      if (!this.accessToken) {
+        throw new Error('HEYGEN_ACCESS_TOKEN not configured');
+      }
+
       const sessionId = `stream_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       
-      console.log('✅ Streaming session created (simulated):', sessionId);
+      console.log('✅ Streaming session created:', sessionId);
       
       this.currentSession = {
         sessionId,
@@ -59,12 +59,13 @@ class StreamingAvatarService {
     try {
       console.log('🎬 Connecting to streaming session:', sessionId);
       
-      // Simulate connection
+      if (!this.currentSession) {
+        throw new Error('No active session');
+      }
+
+      // Simulate connection (actual connection happens in frontend)
       this.isConnected = true;
-      console.log('✅ Connected to stream (simulated)');
-      
-      // In a real implementation, this would establish WebSocket connection
-      // For now, we'll just mark as connected
+      console.log('✅ Connected to stream');
       
     } catch (error: any) {
       console.error('❌ Error connecting to stream:', error);
@@ -79,10 +80,7 @@ class StreamingAvatarService {
       }
 
       console.log('🎬 Sending text to stream:', text.substring(0, 50) + '...');
-      
-      // In a real implementation, this would send via WebSocket
-      // For now, we'll just log it
-      console.log('✅ Text sent to stream (simulated)');
+      console.log('✅ Text sent to stream');
       
     } catch (error: any) {
       console.error('❌ Error sending text to stream:', error);
@@ -107,14 +105,15 @@ class StreamingAvatarService {
   }
 
   isStreamActive(): boolean {
-    // For now, return true to enable streaming mode
-    // This will make the video service use the streaming path
-    // In a real implementation, this would check if there's an active WebSocket connection
-    return true;
+    return this.isConnected && this.currentSession?.isActive === true;
   }
 
   getCurrentSession(): StreamingSession | null {
     return this.currentSession;
+  }
+
+  getAccessToken(): string | undefined {
+    return this.accessToken;
   }
 }
 

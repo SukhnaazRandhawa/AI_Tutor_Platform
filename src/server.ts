@@ -11,6 +11,7 @@ dotenv.config();
 // Import routes (we'll create these next)
 import authRoutes from './routes/auth';
 import avatarRoutes from './routes/avatar'; // Added avatar routes
+import heygenRoutes from './routes/heygen';
 import sessionRoutes from './routes/session';
 import userRoutes from './routes/user';
 import videoRoutes from './routes/video';
@@ -66,6 +67,7 @@ app.use('/api/session', sessionRoutes);
 app.use('/api/voice', voiceRoutes);
 app.use('/api/avatar', avatarRoutes);
 app.use('/api/video', videoRoutes);
+app.use('/api/heygen', heygenRoutes);
 
 // Socket.io connection handling
 io.on('connection', (socket) => {

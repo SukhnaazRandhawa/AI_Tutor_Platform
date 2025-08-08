@@ -76,10 +76,11 @@ class VideoStreamService {
       const aiResponse = await aiService.generateResponse(messages, 'User', tutorName, language, subject);
       console.log('✅ AI response generated:', aiResponse.substring(0, 100) + '...');
 
-      // Create streaming session
+      // Create streaming session with proper avatar ID
+      const avatarId = process.env.HEYGEN_AVATAR_ID || 'Graham_ProfessionalLook2_public';
       const streamingSessionId = await streamingAvatarService.createStreamingSession({
-        apiKey: process.env.HEYGEN_API_KEY || '',
-        avatarId: 'Brandon_expressive_public', // Use the same avatar
+        apiKey: '', // Not needed when using access token
+        avatarId: avatarId,
         voiceId: '8661cd40d6c44c709e2d0031c0186ada' // Use the same voice
       });
 
@@ -100,27 +101,23 @@ class VideoStreamService {
         }
       );
 
-      // Send AI response to stream
+      // Send the AI response to the stream
       await streamingAvatarService.sendTextToStream(streamingSessionId, aiResponse);
 
-      // Store streaming session
-      this.streamingSessions.set(sessionId, {
-        streamingSessionId,
-        isActive: true
-      });
+      // Store the streaming session
+      this.streamingSessions.set(sessionId, streamingSessionId);
 
-      // Return streaming video stream
+      // Return streaming URLs (these will be handled by the SDK)
       const videoStream: VideoStream = {
-        videoUrl: `streaming://${streamingSessionId}`, // Special URL for streaming
-        audioUrl: `streaming://${streamingSessionId}`, // Special URL for streaming
+        videoUrl: `streaming://${streamingSessionId}`,
+        audioUrl: `streaming://${streamingSessionId}`,
         isStreaming: true
       };
 
+      // Store the stream
       this.activeStreams.set(sessionId, videoStream);
-      console.log('✅ Real-time streaming started successfully');
-      console.log('✅ Video URL:', videoStream.videoUrl);
-      console.log('✅ Audio URL:', videoStream.audioUrl);
 
+      console.log('✅ Real-time streaming started successfully');
       return videoStream;
 
     } catch (error: any) {

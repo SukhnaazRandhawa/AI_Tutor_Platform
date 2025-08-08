@@ -173,4 +173,9 @@ export const videoAPI = {
   isStreamingSupported: () => api.get('/api/video/streaming-supported'),
 };
 
+// HeyGen Streaming API
+export const heygenAPI = {
+  createStreamingToken: () => api.post('/api/heygen/streaming-token'),
+};
+
 export default api; 
