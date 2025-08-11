@@ -1,27 +1,26 @@
-import StreamingAvatar, { AvatarQuality, StreamingEvents } from '@heygen/streaming-avatar';
 import { motion } from 'framer-motion';
 import {
-  ArrowLeft,
-  FileText,
-  MessageSquare,
-  Mic,
-  MicOff,
-  Pause,
-  Phone,
-  PhoneOff,
-  Play,
-  Send,
-  Upload,
-  Video,
-  VideoOff,
-  Volume2,
-  VolumeX
+    ArrowLeft,
+    FileText,
+    MessageSquare,
+    Mic,
+    MicOff,
+    Phone,
+    PhoneOff,
+    Send,
+    Upload,
+    Video,
+    VideoOff,
+    Volume2,
+    VolumeX
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
+import Avatar3D from '../components/3DAvatar';
 import { useAuth } from '../components/AuthProvider';
-import { heygenAPI, sessionAPI, videoAPI } from '../services/api';
+import { useAvatarController } from '../hooks/useAvatarController';
+import { sessionAPI, videoAPI } from '../services/api';
 
 // TypeScript declarations for Web Speech API
 declare global {
@@ -51,7 +50,10 @@ export default function VideoCall() {
   const { user, token, loading: authLoading } = useAuth();
   const navigate = useNavigate();
   
-  // State management - ALL HOOKS MUST BE AT THE TOP
+  // Avatar controller hook
+  const avatarController = useAvatarController();
+  
+  // State management
   const [isCallActive, setIsCallActive] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
   const [isVideoOn, setIsVideoOn] = useState(true);
@@ -62,33 +64,14 @@ export default function VideoCall() {
   const [isLoading, setIsLoading] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId || null);
   
-  // Video streaming state
-  const [videoStream, setVideoStream] = useState<VideoStream | null>(null);
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [videoQuality, setVideoQuality] = useState<'low' | 'medium' | 'high'>('medium');
-  
   // Voice recognition state
   const [isListening, setIsListening] = useState(false);
   const [isVoiceSupported, setIsVoiceSupported] = useState(false);
   
-  // HeyGen Streaming SDK state - FIXED: Added more detailed state tracking
-  const [streamingReady, setStreamingReady] = useState(false);
-  const [avatarReady, setAvatarReady] = useState(false);
-  const [streamingError, setStreamingError] = useState<string | null>(null);
-  
-  // Add state for reconnection
-  const [reconnectionAttempts, setReconnectionAttempts] = useState(0);
-  const [isReconnecting, setIsReconnecting] = useState(false);
-  const maxReconnectionAttempts = 3;
-  
   // Refs
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
   const recognitionRef = useRef<any>(null);
-  const streamingAvatarRef = useRef<any>(null);
-  const avatarContainerRef = useRef<HTMLDivElement>(null);
   
   // ALL useEffect hooks must be before any early returns
   // Check if user is authenticated
@@ -135,50 +118,20 @@ export default function VideoCall() {
     }
   }, [currentSessionId, sessionId, navigate]);
 
-  // Initialize voice recognition
-  useEffect(() => {
-    initializeVoiceRecognition();
-  }, []);
-
   // Auto-scroll chat to bottom
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Handle video stream updates
+  // Initialize voice recognition
   useEffect(() => {
-    if (videoStream && videoRef.current) {
-      const url = videoStream.videoUrl || '';
-      if (!/^https?:\/\//i.test(url)) {
-        return;
-      }
-      videoRef.current.src = url;
-      videoRef.current.load();
-    }
-  }, [videoStream]);
+    initializeVoiceRecognition();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Handle audio stream updates
+  // Debug avatar controller state changes - only log when actually changed
   useEffect(() => {
-    if (videoStream && audioRef.current) {
-      const url = videoStream.audioUrl || '';
-      if (!/^https?:\/\//i.test(url)) {
-        return;
-      }
-      audioRef.current.src = url;
-      audioRef.current.load();
-    }
-  }, [videoStream]);
-
-  // FIXED: Debug avatar container mounting
-  useEffect(() => {
-    if (avatarContainerRef.current) {
-      console.log('🎬 Avatar container ref is ready:', {
-        width: avatarContainerRef.current.offsetWidth,
-        height: avatarContainerRef.current.offsetHeight,
-        mounted: !!avatarContainerRef.current.parentElement
-      });
-    }
-  }, [streamingReady, avatarReady]);
+    console.log('🎭 Avatar state changed:', avatarController.state);
+  }, [avatarController.state.isTalking, avatarController.state.isAnimating, avatarController.state.currentEmotion]);
   
   // Show loading screen while checking authentication
   if (authLoading) {
@@ -197,217 +150,6 @@ export default function VideoCall() {
     return null;
   }
   
-  // Enhanced tryStartHeyGenStreaming with reconnection logic
-  const tryStartHeyGenStreaming = async (isReconnection = false) => {
-    try {
-      setStreamingError(null);
-      if (isReconnection) {
-        setIsReconnecting(true);
-        console.log('🔄 Attempting to reconnect avatar...');
-      } else {
-        console.log('🎬 Starting HeyGen streaming process...');
-      }
-      
-      // Get fresh token for each attempt
-      const { data } = await heygenAPI.createStreamingToken();
-      const token: string | undefined = data?.token;
-      if (!token) {
-        throw new Error('No HeyGen streaming token returned from backend');
-      }
-
-      console.log('🎬 HeyGen token received:', token.substring(0, 20) + '...');
-
-      // Clean up previous instance
-      if (streamingAvatarRef.current) {
-        try {
-          await streamingAvatarRef.current.stopAvatar?.();
-        } catch (e) {
-          console.log('Error stopping previous avatar:', e);
-        }
-      }
-
-      // Init new SDK instance
-      const sdk = new StreamingAvatar({ token });
-      streamingAvatarRef.current = sdk;
-
-      console.log('🎬 HeyGen SDK initialized');
-
-      // Enhanced event handlers with reconnection logic
-      sdk.on(StreamingEvents.STREAM_READY, () => {
-        console.log('🎬 HeyGen stream ready!');
-        setStreamingReady(true);
-        setReconnectionAttempts(0); // Reset on successful connection
-        setIsReconnecting(false);
-      });
-      
-      sdk.on(StreamingEvents.STREAM_DISCONNECTED, () => {
-        console.log('🎬 HeyGen stream disconnected');
-        setStreamingReady(false);
-        setAvatarReady(false);
-        
-        // Auto-reconnection logic
-        if (isCallActive && reconnectionAttempts < maxReconnectionAttempts) {
-          console.log(`🔄 Auto-reconnecting in 3 seconds... (Attempt ${reconnectionAttempts + 1}/${maxReconnectionAttempts})`);
-          setTimeout(() => {
-            setReconnectionAttempts(prev => prev + 1);
-            tryStartHeyGenStreaming(true);
-          }, 3000);
-        } else if (reconnectionAttempts >= maxReconnectionAttempts) {
-          console.log('❌ Max reconnection attempts reached');
-          setStreamingError('Avatar disconnected. Max reconnection attempts reached.');
-          setIsReconnecting(false);
-          toast.error('Avatar connection lost. Please restart the call.');
-        }
-      });
-
-      // Add connection quality monitoring
-      sdk.on(StreamingEvents.STREAM_READY, () => {
-        console.log('🎬 Stream quality check...');
-        // Monitor connection quality
-        setInterval(() => {
-          if (sdk && streamingReady) {
-            // Check if stream is still active - simplified check
-            if (!isCallActive) {
-              console.log('⚠️ Call no longer active, stopping monitoring');
-              return;
-            }
-          }
-        }, 30000); // Check every 30 seconds
-      });
-
-      sdk.on(StreamingEvents.AVATAR_START_TALKING, () => {
-        console.log('🎬 Avatar started talking');
-      });
-
-      sdk.on(StreamingEvents.AVATAR_STOP_TALKING, () => {
-        console.log('🎬 Avatar stopped talking');
-      });
-
-      // Create avatar with error handling
-      const avatarId = process.env.REACT_APP_HEYGEN_AVATAR_ID || 'Graham_ProfessionalLook2_public';
-      console.log('🎬 Creating HeyGen avatar with ID:', avatarId);
-      
-      await sdk.createStartAvatar({
-        quality: AvatarQuality.Low, // Use Low for better stability
-        avatarName: avatarId,
-        language: 'en'
-      });
-
-      console.log('🎬 HeyGen avatar created successfully');
-      setAvatarReady(true);
-
-      // Enhanced container attachment with size preservation
-      setTimeout(() => {
-        if (avatarContainerRef.current && sdk) {
-          console.log('🎬 Attempting to attach avatar to container...');
-          
-          // Store original container dimensions
-          const originalWidth = avatarContainerRef.current.offsetWidth;
-          const originalHeight = avatarContainerRef.current.offsetHeight;
-          
-          console.log('🎬 Container dimensions:', { width: originalWidth, height: originalHeight });
-
-          if (sdk.mediaStream) {
-            console.log('🎬 Media stream available, creating video element');
-            
-            // Create video element with size preservation
-            const video = document.createElement('video');
-            video.autoplay = true;
-            video.playsInline = true;
-            video.muted = false;
-            video.style.cssText = `
-              width: 100% !important;
-              height: 100% !important;
-              object-fit: cover !important;
-              position: absolute !important;
-              top: 0 !important;
-              left: 0 !important;
-              background: #000 !important;
-              min-width: ${originalWidth}px !important;
-              min-height: ${originalHeight}px !important;
-            `;
-            video.srcObject = sdk.mediaStream;
-            
-            // Add CSS class for additional styling
-            video.className = 'heygen-avatar-video';
-            
-            // Clear container and add video
-            avatarContainerRef.current.innerHTML = '';
-            avatarContainerRef.current.appendChild(video);
-            
-            // Ensure container maintains its size
-            avatarContainerRef.current.style.cssText += `
-              width: ${originalWidth}px !important;
-              height: ${originalHeight}px !important;
-              min-width: ${originalWidth}px !important;
-              min-height: ${originalHeight}px !important;
-              position: relative !important;
-              overflow: hidden !important;
-            `;
-            
-            console.log('🎬 Video element attached with size preservation');
-            
-            // Monitor for size changes and fix them
-            const sizeObserver = new ResizeObserver(() => {
-              if (avatarContainerRef.current && video) {
-                const currentWidth = avatarContainerRef.current.offsetWidth;
-                const currentHeight = avatarContainerRef.current.offsetHeight;
-                
-                if (currentWidth < originalWidth * 0.8 || currentHeight < originalHeight * 0.8) {
-                  console.log('🔧 Fixing avatar size shrinkage');
-                  avatarContainerRef.current.style.width = originalWidth + 'px';
-                  avatarContainerRef.current.style.height = originalHeight + 'px';
-                  video.style.width = '100%';
-                  video.style.height = '100%';
-                }
-              }
-            });
-            
-            sizeObserver.observe(avatarContainerRef.current);
-            
-            // Store cleanup function
-            (video as any)._cleanup = () => sizeObserver.disconnect();
-            
-          } else if ((sdk as any).attach) {
-            console.log('🎬 Using SDK attach method');
-            (sdk as any).attach(avatarContainerRef.current);
-          } else {
-            console.warn('�� No media stream or attach method available');
-          }
-        }
-      }, 1000);
-
-      return true;
-    } catch (err: any) {
-      console.error('❌ HeyGen streaming init failed:', err);
-      setStreamingError(err.message || 'Failed to initialize avatar');
-      setStreamingReady(false);
-      setAvatarReady(false);
-      setIsReconnecting(false);
-      
-      // Auto-retry logic for connection failures
-      if (isCallActive && reconnectionAttempts < maxReconnectionAttempts && !isReconnection) {
-        console.log('🔄 Retrying avatar connection in 5 seconds...');
-        setTimeout(() => {
-          setReconnectionAttempts(prev => prev + 1);
-          tryStartHeyGenStreaming(true);
-        }, 5000);
-      } else {
-        toast.error('Avatar failed to load. Using fallback display.');
-      }
-      
-      return false;
-    }
-  };
-
-  // Add manual reconnect function
-  const handleManualReconnect = async () => {
-    if (!isCallActive) return;
-    
-    setReconnectionAttempts(0);
-    await tryStartHeyGenStreaming(true);
-  };
-
   const initializeVoiceRecognition = () => {
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     
@@ -451,19 +193,12 @@ export default function VideoCall() {
       console.log('🎬 Tutor:', user?.aiTutorName);
 
       // Try real-time streaming first
-      const started = await tryStartHeyGenStreaming();
-      if (started) {
-        setIsVideoPlaying(true);
-        return;
-      }
-      
-      // Fallback to regular video API
       const response = await videoAPI.startStream(sessionId, user?.aiTutorName || 'John', `Hello ${user?.name}! I'm ${user?.aiTutorName}, your AI tutor. How can I help you today?`);
       console.log('✅ Video stream response:', response.data);
       
       if (response.data.success) {
-        setVideoStream(response.data.videoStream);
-        setIsVideoPlaying(true);
+        // setVideoStream(response.data.videoStream); // Removed as per edit hint
+        // setIsVideoPlaying(true); // Removed as per edit hint
         console.log('✅ Video stream started successfully');
       }
     } catch (error) {
@@ -494,6 +229,10 @@ export default function VideoCall() {
         // Start video stream
         await startVideoStream(response.data.session.id);
         
+        // Make avatar wave and show happy emotion
+        avatarController.triggerGesture('wave');
+        avatarController.setEmotion('happy');
+        
         toast.success('Call started! Your AI tutor is ready.');
       }
       
@@ -513,22 +252,20 @@ export default function VideoCall() {
         await videoAPI.stopStream(currentSessionId);
       }
       
-      // Stop HeyGen streaming if active
-      try {
-        await streamingAvatarRef.current?.stopAvatar?.();
-        streamingAvatarRef.current = null;
-      } catch (error) {
-        console.log('Error stopping avatar:', error);
+      // Stop video stream
+      if (currentSessionId) {
+        await videoAPI.stopStream(currentSessionId);
       }
+      
+      // Make avatar nod and show neutral emotion
+      avatarController.triggerGesture('nod');
+      avatarController.setEmotion('neutral');
       
       setIsCallActive(false);
       setCurrentSessionId(null);
       setMessages([]);
-      setVideoStream(null);
-      setStreamingReady(false);
-      setAvatarReady(false);
-      setStreamingError(null);
-      setIsVideoPlaying(false);
+      // setVideoStream(null); // Removed as per edit hint
+      // setIsVideoPlaying(false); // Removed as per edit hint
       
       toast.success('Call ended');
       navigate('/dashboard');
@@ -553,6 +290,9 @@ export default function VideoCall() {
     setNewMessage('');
 
     try {
+      // Make avatar show thinking emotion
+      avatarController.setEmotion('thinking');
+      
       const response = await sessionAPI.sendMessage(messageToSend, currentSessionId);
       if (response.data.success) {
         const aiMessage: Message = {
@@ -563,25 +303,23 @@ export default function VideoCall() {
         };
         setMessages(prev => [...prev, aiMessage]);
 
-        // FIXED: Make avatar speak the response
-        if (streamingAvatarRef.current && avatarReady) {
-          try {
-            await streamingAvatarRef.current.speak({
-              text: response.data.response,
-              taskType: 'talk',
-            });
-            console.log('🎬 Avatar speaking response');
-          } catch (error) {
-            console.error('Failed to make avatar speak:', error);
-          }
-        }
+        // Make avatar speak and show explaining emotion
+        avatarController.startTalking();
+        avatarController.setEmotion('explaining');
+        
+        // Stop talking after a delay
+        setTimeout(() => {
+          avatarController.stopTalking();
+          avatarController.setEmotion('listening');
+        }, 3000);
 
-        // Generate talking response for fallback video
+        // Generate talking response
         await generateTalkingResponse(response.data.response);
       }
     } catch (error: any) {
       console.error('Failed to send message:', error);
       toast.error('Failed to send message');
+      avatarController.setEmotion('neutral');
     }
   };
 
@@ -591,8 +329,8 @@ export default function VideoCall() {
       
       const response = await videoAPI.generateTalkingResponse(currentSessionId, message);
       if (response.data.success) {
-        setVideoStream(response.data.stream);
-        setIsVideoPlaying(true);
+        // setVideoStream(response.data.stream); // Removed as per edit hint
+        // setIsVideoPlaying(true); // Removed as per edit hint
       }
     } catch (error) {
       console.error('Failed to generate talking response:', error);
@@ -608,35 +346,39 @@ export default function VideoCall() {
 
   const toggleMute = () => {
     setIsMuted(!isMuted);
+    if (!isMuted) {
+      avatarController.triggerGesture('wave');
+      avatarController.setEmotion('happy');
+    } else {
+      avatarController.setEmotion('listening');
+    }
     toast.success(isMuted ? 'Microphone enabled' : 'Microphone muted');
   };
 
   const toggleVideo = () => {
     setIsVideoOn(!isVideoOn);
+    if (!isVideoOn) {
+      avatarController.triggerGesture('point');
+      avatarController.setEmotion('explaining');
+    } else {
+      avatarController.setEmotion('listening');
+    }
     toast.success(isVideoOn ? 'Video disabled' : 'Video enabled');
   };
 
   const toggleVolume = () => {
     setIsVolumeOn(!isVolumeOn);
-    if (audioRef.current) {
-      audioRef.current.muted = !isVolumeOn;
+    if (!isVolumeOn) {
+      avatarController.triggerGesture('nod');
+      avatarController.setEmotion('happy');
+    } else {
+      avatarController.setEmotion('listening');
     }
     toast.success(isVolumeOn ? 'Volume muted' : 'Volume enabled');
   };
 
   const toggleChat = () => {
     setShowChat(!showChat);
-  };
-
-  const toggleVideoPlayback = () => {
-    if (videoRef.current) {
-      if (isVideoPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-      setIsVideoPlaying(!isVideoPlaying);
-    }
   };
 
   const startVoiceInput = () => {
@@ -671,17 +413,6 @@ export default function VideoCall() {
               <p className="text-sm text-secondary-400">
                 Session ID: {currentSessionId || 'Not started'}
               </p>
-              {/* FIXED: Show streaming status */}
-              {streamingError && (
-                <p className="text-xs text-red-400">
-                  Avatar Error: {streamingError}
-                </p>
-              )}
-              {isReconnecting && (
-                <p className="text-xs text-yellow-400">
-                  🔄 Reconnecting... (Attempt {reconnectionAttempts + 1}/{maxReconnectionAttempts})
-                </p>
-              )}
             </div>
           </div>
             
@@ -741,75 +472,16 @@ export default function VideoCall() {
           >
             {/* Main Video Display */}
             <div className="flex-1 bg-secondary-800 rounded-xl border border-secondary-700 flex items-center justify-center mb-4 relative overflow-hidden">
-              {/* FIXED: Better conditional rendering for avatar */}
-              {isCallActive && (streamingReady || avatarReady) ? (
-                <div className="w-full h-full relative">
-                  {/* HeyGen Avatar Container - FIXED: Always render with proper styling */}
-                  <div 
-                    ref={avatarContainerRef} 
-                    className="w-full h-full bg-black rounded-xl"
-                    style={{ minHeight: '400px' }}
-                  />
-                  
-                  {/* Status overlay */}
-                  <div className="absolute top-4 left-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-lg text-sm">
-                    {streamingReady ? '🔴 Live Avatar' : '🔄 Loading Avatar...'}
-                  </div>
-                  
-                  {/* Debug info - remove in production */}
-                  {process.env.NODE_ENV === 'development' && (
-                    <div className="absolute bottom-4 right-4 bg-black bg-opacity-50 text-white px-2 py-1 rounded text-xs">
-                      Stream: {streamingReady ? 'Ready' : 'Not Ready'} | 
-                      Avatar: {avatarReady ? 'Ready' : 'Not Ready'}
-                      {isReconnecting && ` | Reconnecting: ${reconnectionAttempts}/${maxReconnectionAttempts}`}
-                    </div>
-                  )}
-                </div>
-              ) : isCallActive && videoStream ? (
-                <div className="w-full h-full relative">
-                  <video
-                    ref={videoRef}
-                    className="w-full h-full object-cover rounded-xl"
-                    autoPlay
-                    muted={!isVolumeOn}
-                    onPlay={() => setIsVideoPlaying(true)}
-                    onPause={() => setIsVideoPlaying(false)}
-                  />
-                  <div className="absolute top-4 right-4 flex space-x-2">
-                    <button
-                      onClick={toggleVideoPlayback}
-                      className="p-2 bg-black bg-opacity-50 text-white rounded-lg hover:bg-opacity-70 transition-colors"
-                    >
-                      {isVideoPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-                    </button>
-                  </div>
-                  <div className="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white px-3 py-1 rounded-lg text-sm">
-                    {videoQuality} Quality
-                  </div>
-                </div>
-              ) : isCallActive ? (
-                <div className="text-center">
-                  <div className="h-32 w-32 bg-gradient-to-r from-primary-600 to-accent-600 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <span className="text-4xl font-bold text-white">
-                      {user?.aiTutorName?.charAt(0) || 'A'}
-                    </span>
-                  </div>
-                  <h3 className="text-xl font-semibold text-white mb-2">
-                    {user?.aiTutorName}
-                  </h3>
-                  <p className="text-secondary-400">Your AI Tutor</p>
-                  <div className="mt-4 flex items-center justify-center space-x-2">
-                    <div className="w-3 h-3 bg-green-500 rounded-full animate-pulse"></div>
-                    <span className="text-sm text-green-400">
-                      {streamingReady ? 'Avatar Loading...' : 'Connecting...'}
-                    </span>
-                  </div>
-                  {streamingError && (
-                    <p className="text-red-400 text-sm mt-2">
-                      Avatar failed to load. Using fallback display.
-                    </p>
-                  )}
-                </div>
+              {isCallActive ? (
+                <Avatar3D
+                  isTalking={avatarController.state.isTalking}
+                  isAnimating={avatarController.state.isAnimating}
+                  avatarName={user?.aiTutorName || 'AI Tutor'}
+                  onAvatarReady={() => {
+                    console.log('🎬 3D Avatar ready!');
+                    avatarController.setEmotion('listening');
+                  }}
+                />
               ) : (
                 <div className="text-center">
                   <Video className="h-16 w-16 text-secondary-400 mx-auto mb-4" />
@@ -832,12 +504,7 @@ export default function VideoCall() {
               )}
               
               {/* Hidden audio element for AI tutor speech */}
-              <audio
-                ref={audioRef}
-                autoPlay
-                muted={!isVolumeOn}
-                style={{ display: 'none' }}
-              />
+              {/* Audio is now handled by the 3D avatar */}
             </div>
 
             {/* Call Controls */}
@@ -872,24 +539,6 @@ export default function VideoCall() {
                 >
                   {isVideoOn ? <Video className="h-6 w-6" /> : <VideoOff className="h-6 w-6" />}
                 </button>
-                {/* Manual reconnect button */}
-                {streamingError && (
-                  <button
-                    key="reconnect-button"
-                    onClick={handleManualReconnect}
-                    disabled={isReconnecting}
-                    className="p-3 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-colors disabled:opacity-50"
-                    title="Reconnect Avatar"
-                  >
-                    <div className="h-6 w-6 flex items-center justify-center">
-                      {isReconnecting ? (
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                      ) : (
-                        <span className="text-sm">🔄</span>
-                      )}
-                    </div>
-                  </button>
-                )}
               </div>
             )}
           </motion.div>

@@ -77,7 +77,7 @@ class VideoStreamService {
       console.log('✅ AI response generated:', aiResponse.substring(0, 100) + '...');
 
       // Create streaming session with proper avatar ID
-      const avatarId = process.env.HEYGEN_AVATAR_ID || 'Graham_ProfessionalLook2_public';
+      const avatarId = process.env.HEYGEN_AVATAR_ID || 'Marianne_Red_Suit_public';
       const streamingSessionId = await streamingAvatarService.createStreamingSession({
         apiKey: '', // Not needed when using access token
         avatarId: avatarId,
