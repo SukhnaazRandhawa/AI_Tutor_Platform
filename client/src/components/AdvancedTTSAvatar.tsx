@@ -1,11 +1,11 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-    AlertCircle,
-    Eye,
-    EyeOff,
-    Mic,
-    MicOff,
-    Settings
+  AlertCircle,
+  Eye,
+  EyeOff,
+  Mic,
+  MicOff,
+  Settings
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -473,7 +473,7 @@ export default function AdvancedTTSAvatar({
         <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-64 h-64 bg-gradient-radial from-blue-100 via-transparent to-transparent opacity-20"></div>
       </div>
 
-      {/* Main avatar container */}
+      {/* Main avatar container - FULL SCREEN */}
       <div className="relative z-10 flex flex-col items-center justify-center h-full">
         <AnimatePresence mode="wait">
           <motion.div
@@ -486,13 +486,13 @@ export default function AdvancedTTSAvatar({
             }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: ANIMATION_CONFIG.expressions.transitionDuration, ease: "easeInOut" }}
-            className="relative"
+            className="relative w-full h-full"
             style={{
               transform: `rotate(${avatarState.headTilt}deg) translateY(${avatarState.headNod + avatarState.breathingOffset}px)`
             }}
           >
-            {/* Base avatar image */}
-            <div className="relative w-80 h-96 rounded-full overflow-hidden shadow-2xl">
+            {/* Base avatar image - FULL SCREEN */}
+            <div className="relative w-full h-full rounded-xl overflow-hidden shadow-2xl">
               <img
                 src="/avatar/neutral-base.png"
                 alt="Professional AI Tutor"
@@ -515,41 +515,22 @@ export default function AdvancedTTSAvatar({
                 </div>
               )}
             </div>
-
-            {/* Enhanced expression indicator */}
-            <div className="absolute -bottom-4 left-1/2 transform -translate-x-1/2">
-              <div className="bg-white bg-opacity-95 px-4 py-2 rounded-full shadow-xl border border-gray-200">
-                <span className="text-sm font-semibold text-gray-800 capitalize">
-                  {avatarState.currentExpression}
-                </span>
-                {avatarState.isTalking && (
-                  <span className="ml-2 text-xs text-blue-600 font-medium">
-                    Speaking: {avatarState.currentPhoneme}
-                  </span>
-                )}
-              </div>
-            </div>
           </motion.div>
         </AnimatePresence>
 
-        {/* Enhanced avatar name and status */}
-        <div className="mt-8 text-center">
-          <h2 className="text-2xl font-bold text-white mb-2 drop-shadow-lg">{avatarName}</h2>
-          <div className="flex items-center justify-center space-x-3">
-            <div className={`w-3 h-3 rounded-full ${avatarState.isTalking ? 'bg-green-400 animate-pulse' : 'bg-white'}`}></div>
-            <span className="text-white text-sm font-medium">
+        {/* Clean avatar name and status - minimal */}
+        <div className="absolute bottom-4 left-4 text-center">
+          <h2 className="text-xl font-bold text-white mb-1 drop-shadow-lg">{avatarName}</h2>
+          <div className="flex items-center justify-center space-x-2">
+            <div className={`w-2 h-2 rounded-full ${avatarState.isTalking ? 'bg-green-400 animate-pulse' : 'bg-white'}`}></div>
+            <span className="text-white text-xs font-medium">
               {avatarState.isTalking ? 'Speaking...' : 'Ready'}
             </span>
-            {avatarState.isTalking && (
-              <span className="text-xs text-blue-300 bg-blue-900 bg-opacity-50 px-2 py-1 rounded-full">
-                TTS Active
-              </span>
-            )}
           </div>
         </div>
       </div>
 
-      {/* Enhanced control buttons */}
+      {/* Essential control buttons only */}
       <div className="absolute top-4 right-4 flex space-x-2">
         <button
           onClick={() => setShowSettings(!showSettings)}
@@ -582,19 +563,6 @@ export default function AdvancedTTSAvatar({
         >
           {avatarState.isAnimating ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
         </button>
-      </div>
-
-      {/* Enhanced status overlay */}
-      <div className="absolute bottom-4 left-4 bg-black bg-opacity-60 text-white px-4 py-3 rounded-xl backdrop-blur-sm">
-        <div className="text-xs space-y-1">
-          <div className="font-semibold">🎭 Advanced TTS Mode</div>
-          <div>Expression: {avatarState.currentExpression}</div>
-          <div>Status: {avatarState.isTalking ? 'Speaking' : 'Idle'}</div>
-          <div>Mouth: Frame {avatarState.mouthFrame} ({avatarState.currentPhoneme})</div>
-          <div>Audio: {avatarState.audioLevel > 0 ? `${Math.round(avatarState.audioLevel * 100)}%` : 'Silent'}</div>
-          <div>Voice: {selectedVoice?.name || 'None'}</div>
-          <div>Volume: {Math.round(volume * 100)}%</div>
-        </div>
       </div>
 
       {/* Enhanced settings panel */}
