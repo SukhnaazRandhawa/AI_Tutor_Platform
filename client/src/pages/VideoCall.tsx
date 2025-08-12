@@ -64,6 +64,7 @@ export default function VideoCall() {
   const chatEndRef = useRef<HTMLDivElement>(null);
   const messageInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
+  const avatarReadyRef = useRef(false);
   
   // ALL useEffect hooks must be before any early returns
   // Check if user is authenticated
@@ -120,11 +121,6 @@ export default function VideoCall() {
     initializeVoiceRecognition();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Debug avatar controller state changes - only log when actually changed
-  useEffect(() => {
-    console.log('🎭 Avatar state changed:', avatarController.state);
-  }, [avatarController.state.isTalking, avatarController.state.isAnimating, avatarController.state.currentEmotion]);
-  
   // Show loading screen while checking authentication
   if (authLoading) {
     return (
@@ -203,6 +199,9 @@ export default function VideoCall() {
     try {
       setIsLoading(true);
       
+      // Reset avatar ready state for new session
+      avatarReadyRef.current = false;
+      
       // Clear any stale active sessions
       try {
         await sessionAPI.clearActiveSessions();
@@ -252,6 +251,9 @@ export default function VideoCall() {
       // Make avatar nod and show neutral emotion
       avatarController.triggerGesture('nod');
       avatarController.setEmotion('neutral');
+      
+      // Reset avatar ready state
+      avatarReadyRef.current = false;
       
       setIsCallActive(false);
       setCurrentSessionId(null);
@@ -484,8 +486,11 @@ export default function VideoCall() {
                   avatarName={user?.aiTutorName || 'AI Tutor'}
                   currentEmotion={avatarController.state.currentEmotion}
                   onAvatarReady={() => {
-                    console.log('🎭 Animated Avatar ready!');
-                    avatarController.setEmotion('listening');
+                    if (!avatarReadyRef.current) {
+                      console.log('🎭 Animated Avatar ready!');
+                      avatarController.setEmotion('listening');
+                      avatarReadyRef.current = true;
+                    }
                   }}
                 />
               ) : (

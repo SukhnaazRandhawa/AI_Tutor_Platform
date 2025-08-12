@@ -85,6 +85,7 @@ export default function AnimatedAvatar({
   const blinkTimerRef = useRef<NodeJS.Timeout>();
   const talkTimerRef = useRef<NodeJS.Timeout>();
   const headMovementRef = useRef<number>();
+  const initializedRef = useRef(false);
 
   // Update avatar state when props change
   useEffect(() => {
@@ -245,7 +246,12 @@ export default function AnimatedAvatar({
         await new Promise(resolve => setTimeout(resolve, 800));
         
         setIsLoaded(true);
-        onAvatarReady();
+        
+        // Only call onAvatarReady once
+        if (!initializedRef.current) {
+          onAvatarReady();
+          initializedRef.current = true;
+        }
         
         console.log('🎭 Animated Avatar ready!');
         
@@ -253,7 +259,10 @@ export default function AnimatedAvatar({
         console.error('Failed to initialize animated avatar:', error);
         setError('Failed to load avatar');
         setIsLoaded(true); // Still mark as loaded to show error state
-        onAvatarReady();
+        if (!initializedRef.current) {
+          onAvatarReady();
+          initializedRef.current = true;
+        }
       }
     };
 
