@@ -1,11 +1,11 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  AlertCircle,
-  Eye,
-  EyeOff,
-  Mic,
-  MicOff,
-  Settings
+    AlertCircle,
+    Eye,
+    EyeOff,
+    Mic,
+    MicOff,
+    Settings
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
@@ -23,7 +23,7 @@ interface AvatarState {
 }
 
 // Props for the advanced TTS avatar
-interface AnimatedAvatarProps {
+interface AdvancedTTSAvatarProps {
   isTalking?: boolean;
   isAnimating?: boolean;
   avatarName?: string;
@@ -76,7 +76,7 @@ const PHONEME_MOUTH_MAP: { [key: string]: number } = {
   'default': 0 // closed
 };
 
-export default function AnimatedAvatar({
+export default function AdvancedTTSAvatar({
   isTalking = false,
   isAnimating = true,
   avatarName = "AI Tutor",
@@ -87,7 +87,7 @@ export default function AnimatedAvatar({
   speechText,
   onSpeechStart,
   onSpeechEnd
-}: AnimatedAvatarProps) {
+}: AdvancedTTSAvatarProps) {
   
   // Advanced state management
   const [avatarState, setAvatarState] = useState<AvatarState>({

@@ -16,7 +16,7 @@ import {
 import React, { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
-import AnimatedAvatar from '../components/AnimatedAvatar';
+import AdvancedTTSAvatar from '../components/AdvancedTTSAvatar';
 import { useAuth } from '../components/AuthProvider';
 import { useAvatarController } from '../hooks/useAvatarController';
 import { sessionAPI, videoAPI } from '../services/api';
@@ -55,6 +55,7 @@ export default function VideoCall() {
   const [newMessage, setNewMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(sessionId || null);
+  const [speechText, setSpeechText] = useState<string>(''); // Text for TTS avatar to speak
   
   // Voice recognition state
   const [isListening, setIsListening] = useState(false);
@@ -297,6 +298,9 @@ export default function VideoCall() {
         };
         setMessages(prev => [...prev, aiMessage]);
 
+        // Set speech text for TTS avatar to speak
+        setSpeechText(response.data.response);
+
         // Make avatar speak and show explaining emotion
         avatarController.startTalking();
         avatarController.setEmotion('explaining');
@@ -305,7 +309,8 @@ export default function VideoCall() {
         setTimeout(() => {
           avatarController.stopTalking();
           avatarController.setEmotion('listening');
-        }, 3000);
+          setSpeechText(''); // Clear speech text
+        }, 5000); // Increased to 5 seconds for longer responses
 
       }
     } catch (error: any) {
@@ -464,14 +469,21 @@ export default function VideoCall() {
             {/* Main Video Display */}
             <div className="flex-1 bg-secondary-800 rounded-xl border border-secondary-700 flex items-center justify-center mb-4 relative overflow-hidden">
               {isCallActive ? (
-                <AnimatedAvatar
+                <AdvancedTTSAvatar
                   isTalking={avatarController.state.isTalking}
                   isAnimating={avatarController.state.isAnimating}
                   avatarName={user?.aiTutorName || 'AI Tutor'}
                   currentEmotion={avatarController.state.currentEmotion}
+                  speechText={speechText}
+                  onSpeechStart={() => {
+                    console.log('🎭 TTS Avatar started speaking');
+                  }}
+                  onSpeechEnd={() => {
+                    console.log('🎭 TTS Avatar finished speaking');
+                  }}
                   onAvatarReady={() => {
                     if (!avatarReadyRef.current) {
-                      console.log('🎭 Animated Avatar ready!');
+                      console.log('🎭 Advanced TTS Avatar ready!');
                       avatarController.setEmotion('listening');
                       avatarReadyRef.current = true;
                     }
@@ -485,7 +497,7 @@ export default function VideoCall() {
                     <button
                       onClick={handleStartCall}
                       disabled={isLoading}
-                      className="btn-primary flex items-center space-x-2 mx-auto"
+                      className="bg-primary-600 hover:bg-primary-700 disabled:bg-primary-400 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 mx-auto"
                     >
                       {isLoading ? (
                         <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
@@ -497,10 +509,30 @@ export default function VideoCall() {
                       )}
                     </button>
                     
+                    {/* Test TTS Button */}
+                    <button
+                      onClick={() => {
+                        setSpeechText("Hello! I'm your AI tutor. This is a demonstration of my advanced text-to-speech capabilities with realistic lip sync and natural voice synthesis.");
+                        avatarController.startTalking();
+                        avatarController.setEmotion('explaining');
+                        setTimeout(() => {
+                          avatarController.stopTalking();
+                          avatarController.setEmotion('listening');
+                          setSpeechText('');
+                        }, 8000);
+                      }}
+                      disabled={isLoading}
+                      className="bg-secondary-600 hover:bg-secondary-700 disabled:bg-secondary-400 disabled:cursor-not-allowed text-white px-6 py-3 rounded-lg font-medium transition-colors flex items-center space-x-2 mx-auto"
+                    >
+                      <Volume2 className="h-4 w-4" />
+                      <span>Test TTS Voice</span>
+                    </button>
+                    
                     {/* Avatar Info */}
                     <div className="text-center text-xs text-secondary-500 max-w-md mx-auto mt-3">
-                      <p>🎭 <strong>Professional Animated Avatar:</strong> Uses your screenshot with real-time animations!</p>
-                      <p>Features lip-sync, blinking, expressions, and head movements.</p>
+                      <p>🎭 <strong>Advanced TTS Avatar:</strong> Real speech synthesis with lip sync!</p>
+                      <p>Features: 8 mouth positions, phoneme detection, breathing, head movements.</p>
+                      <p>Uses browser Speech Synthesis API for natural voice.</p>
                     </div>
                   </div>
                 </div>
