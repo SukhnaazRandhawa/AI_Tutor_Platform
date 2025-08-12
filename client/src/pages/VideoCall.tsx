@@ -307,27 +307,11 @@ export default function VideoCall() {
           avatarController.setEmotion('listening');
         }, 3000);
 
-        // Generate talking response
-        await generateTalkingResponse(response.data.response);
       }
     } catch (error: any) {
       console.error('Failed to send message:', error);
       toast.error('Failed to send message');
       avatarController.setEmotion('neutral');
-    }
-  };
-
-  const generateTalkingResponse = async (message: string) => {
-    try {
-      if (!currentSessionId) return;
-      
-      const response = await videoAPI.generateTalkingResponse(currentSessionId, message);
-      if (response.data.success) {
-        // setVideoStream(response.data.stream); // Removed as per edit hint
-        // setIsVideoPlaying(true); // Removed as per edit hint
-      }
-    } catch (error) {
-      console.error('Failed to generate talking response:', error);
     }
   };
 

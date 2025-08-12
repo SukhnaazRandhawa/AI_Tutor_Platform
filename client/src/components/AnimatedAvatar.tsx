@@ -39,7 +39,7 @@ const ANIMATION_CONFIG = {
   },
   blink: {
     duration: 150, // ms
-    interval: { min: 2000, max: 5000 }, // random blink interval
+    interval: { min: 4000, max: 8000 }, // random blink interval - increased for less frequent blinking
   },
   head: {
     tiltRange: 15, // degrees
@@ -100,8 +100,10 @@ export default function AnimatedAvatar({
   useEffect(() => {
     if (isTalking) {
       startTalkingAnimation();
+      console.log('🎭 Avatar started talking - mouth animation active');
     } else {
       stopTalkingAnimation();
+      console.log('🎭 Avatar stopped talking - mouth animation stopped');
     }
 
     return () => {
@@ -111,15 +113,16 @@ export default function AnimatedAvatar({
 
   // Handle blinking animation
   useEffect(() => {
-    if (isAnimating) {
-      startBlinkingAnimation();
-    } else {
-      stopBlinkingAnimation();
-    }
+    // Blinking is completely disabled - no blinking animation
+    // if (isAnimating) {
+    //   startBlinkingAnimation();
+    // } else {
+    //   stopBlinkingAnimation();
+    // }
 
-    return () => {
-      stopBlinkingAnimation();
-    };
+    // return () => {
+    //   stopBlinkingAnimation();
+    // };
   }, [isAnimating]);
 
   // Handle head movements
@@ -162,7 +165,9 @@ export default function AnimatedAvatar({
         mouthFrame: (prev.mouthFrame + 1) % ANIMATION_CONFIG.mouth.frames
       }));
       
-      talkTimerRef.current = setTimeout(animateMouth, ANIMATION_CONFIG.mouth.frameDuration);
+      // Randomize the timing slightly for more natural speech
+      const randomDelay = ANIMATION_CONFIG.mouth.frameDuration + (Math.random() - 0.5) * 50;
+      talkTimerRef.current = setTimeout(animateMouth, randomDelay);
     };
     
     animateMouth();
@@ -210,9 +215,9 @@ export default function AnimatedAvatar({
   const startHeadMovement = useCallback(() => {
     const animateHead = () => {
       setAvatarState(prev => {
-        // Subtle random head movements
-        const newTilt = prev.headTilt + (Math.random() - 0.5) * 2;
-        const newNod = prev.headNod + (Math.random() - 0.5) * 1;
+        // Subtle random head movements - less frequent and more natural
+        const newTilt = prev.headTilt + (Math.random() - 0.5) * 1; // Reduced from 2 to 1
+        const newNod = prev.headNod + (Math.random() - 0.5) * 0.5; // Reduced from 1 to 0.5
         
         return {
           ...prev,
@@ -223,7 +228,10 @@ export default function AnimatedAvatar({
         };
       });
       
-      headMovementRef.current = requestAnimationFrame(animateHead);
+      // Slower head movement updates for more natural motion
+      headMovementRef.current = requestAnimationFrame(() => {
+        setTimeout(animateHead, 100); // Add 100ms delay between head movements
+      });
     };
     
     animateHead();
@@ -319,12 +327,12 @@ export default function AnimatedAvatar({
   const getExpressionBlend = () => {
     const expressions = {
       neutral: { opacity: 1, scale: 1, brightness: 1 },
-      happy: { opacity: 1, scale: 1.02, brightness: 1.05 },
-      thinking: { opacity: 0.95, scale: 0.98, brightness: 0.95 },
-      explaining: { opacity: 1, scale: 1.01, brightness: 1.02 },
+      happy: { opacity: 1, scale: 1.01, brightness: 1.02 }, // Reduced from 1.02/1.05
+      thinking: { opacity: 0.98, scale: 0.99, brightness: 0.98 }, // Reduced from 0.95/0.95
+      explaining: { opacity: 1, scale: 1.005, brightness: 1.01 }, // Reduced from 1.01/1.02
       listening: { opacity: 1, scale: 1, brightness: 1 },
-      surprised: { opacity: 1, scale: 1.03, brightness: 1.1 },
-      concerned: { opacity: 0.9, scale: 0.97, brightness: 0.9 }
+      surprised: { opacity: 1, scale: 1.015, brightness: 1.05 }, // Reduced from 1.03/1.1
+      concerned: { opacity: 0.95, scale: 0.985, brightness: 0.95 } // Reduced from 0.9/0.97
     };
     
     return expressions[avatarState.currentExpression] || expressions.neutral;
@@ -371,19 +379,11 @@ export default function AnimatedAvatar({
               {/* Mouth animation overlay */}
               {avatarState.isTalking && (
                 <div className={`absolute inset-0 ${getMouthPosition()} transition-transform duration-75`}>
-                  {/* This would be a mouth overlay image in production */}
-                  <div className="absolute bottom-1/3 left-1/2 transform -translate-x-1/2 w-16 h-8 bg-black bg-opacity-20 rounded-full"></div>
+                  {/* Enhanced mouth overlay for better visibility */}
+                  <div className="absolute bottom-1/3 left-1/2 transform -translate-x-1/2 w-20 h-10 bg-black bg-opacity-40 rounded-full border-2 border-white border-opacity-50"></div>
                 </div>
               )}
               
-              {/* Eye blink overlay */}
-              {avatarState.isBlinking && (
-                <div className="absolute inset-0">
-                  {/* This would be closed eyes overlay in production */}
-                  <div className="absolute top-1/3 left-1/4 w-8 h-4 bg-black bg-opacity-20 rounded-full"></div>
-                  <div className="absolute top-1/3 right-1/4 w-8 h-4 bg-black bg-opacity-20 rounded-full"></div>
-                </div>
-              )}
             </div>
 
             {/* Expression indicator */}
@@ -438,7 +438,7 @@ export default function AnimatedAvatar({
           <div>Expression: {avatarState.currentExpression}</div>
           <div>Status: {avatarState.isTalking ? 'Talking' : 'Idle'}</div>
           <div>Mouth: Frame {avatarState.mouthFrame}</div>
-          <div>Eyes: {avatarState.eyeState}</div>
+          <div>No Blinking</div>
         </div>
       </div>
 
@@ -468,7 +468,7 @@ export default function AnimatedAvatar({
             </div>
             
             <div>
-              <label className="text-sm text-gray-600">Blink Frequency</label>
+              <label className="text-sm text-gray-600">Blink Frequency (Disabled)</label>
               <input
                 type="range"
                 min="1000"
@@ -478,7 +478,9 @@ export default function AnimatedAvatar({
                   // In production, this would update the config
                   console.log('Blink frequency:', e.target.value);
                 }}
-                className="w-full"
+                className="w-full opacity-50"
+                disabled
+                title="Blinking is disabled"
               />
             </div>
             
