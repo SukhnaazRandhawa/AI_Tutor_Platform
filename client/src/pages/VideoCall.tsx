@@ -1,23 +1,22 @@
 import { motion } from 'framer-motion';
 import {
-    ArrowLeft,
-    FileText,
-    MessageSquare,
-    Mic,
-    MicOff,
-    Phone,
-    PhoneOff,
-    Send,
-    Upload,
-    Video,
-    VideoOff,
-    Volume2,
-    VolumeX
+  ArrowLeft,
+  MessageSquare,
+  Mic,
+  MicOff,
+  Phone,
+  PhoneOff,
+  Send,
+  Upload,
+  Video,
+  VideoOff,
+  Volume2,
+  VolumeX
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
-import Avatar3D from '../components/3DAvatar';
+import AnimatedAvatar from '../components/AnimatedAvatar';
 import { useAuth } from '../components/AuthProvider';
 import { useAvatarController } from '../hooks/useAvatarController';
 import { sessionAPI, videoAPI } from '../services/api';
@@ -36,13 +35,6 @@ interface Message {
   content: string;
   timestamp: Date | string;
   attachments?: string[];
-}
-
-interface VideoStream {
-  videoUrl: string;
-  audioUrl: string;
-  duration: number;
-  isLive: boolean;
 }
 
 export default function VideoCall() {
@@ -417,6 +409,7 @@ export default function VideoCall() {
           </div>
             
             <div className="flex items-center space-x-2">
+              
               <button
                 onClick={toggleMute}
                 className={`p-2 rounded-lg transition-colors ${
@@ -470,15 +463,28 @@ export default function VideoCall() {
             animate={{ opacity: 1, scale: 1 }}
             className="h-full flex flex-col"
           >
+            {/* Status Bar */}
+            <div className="flex items-center justify-between text-sm text-secondary-400 mb-4">
+              <div className="flex items-center space-x-4">
+                <span>Session: {sessionId}</span>
+                <span>User: {user?.name}</span>
+                <span>Tutor: {user?.aiTutorName}</span>
+              </div>
+              
+              <div className="flex items-center space-x-4">
+                <span>Status: {isCallActive ? 'Active' : 'Ready'}</span>
+              </div>
+            </div>
             {/* Main Video Display */}
             <div className="flex-1 bg-secondary-800 rounded-xl border border-secondary-700 flex items-center justify-center mb-4 relative overflow-hidden">
               {isCallActive ? (
-                <Avatar3D
+                <AnimatedAvatar
                   isTalking={avatarController.state.isTalking}
                   isAnimating={avatarController.state.isAnimating}
                   avatarName={user?.aiTutorName || 'AI Tutor'}
+                  currentEmotion={avatarController.state.currentEmotion}
                   onAvatarReady={() => {
-                    console.log('🎬 3D Avatar ready!');
+                    console.log('🎭 Animated Avatar ready!');
                     avatarController.setEmotion('listening');
                   }}
                 />
@@ -486,20 +492,28 @@ export default function VideoCall() {
                 <div className="text-center">
                   <Video className="h-16 w-16 text-secondary-400 mx-auto mb-4" />
                   <p className="text-secondary-400 mb-4">Ready to start your learning session</p>
-                  <button
-                    onClick={handleStartCall}
-                    disabled={isLoading}
-                    className="btn-primary flex items-center space-x-2 mx-auto"
-                  >
-                    {isLoading ? (
-                      <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
-                    ) : (
-                      <>
-                        <Phone className="h-4 w-4" />
-                        <span>Start Call</span>
-                      </>
-                    )}
-                  </button>
+                  <div className="space-y-3">
+                    <button
+                      onClick={handleStartCall}
+                      disabled={isLoading}
+                      className="btn-primary flex items-center space-x-2 mx-auto"
+                    >
+                      {isLoading ? (
+                        <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                      ) : (
+                        <>
+                          <Phone className="h-4 w-4" />
+                          <span>Start Call</span>
+                        </>
+                      )}
+                    </button>
+                    
+                    {/* Avatar Info */}
+                    <div className="text-center text-xs text-secondary-500 max-w-md mx-auto mt-3">
+                      <p>🎭 <strong>Professional Animated Avatar:</strong> Uses your screenshot with real-time animations!</p>
+                      <p>Features lip-sync, blinking, expressions, and head movements.</p>
+                    </div>
+                  </div>
                 </div>
               )}
               
@@ -600,7 +614,7 @@ export default function VideoCall() {
                   <Upload className="h-5 w-5" />
                 </button>
                 <button className="p-2 text-secondary-400 hover:text-white hover:bg-secondary-700 rounded-lg transition-colors">
-                  <FileText className="h-5 w-5" />
+                  {/* Removed FileText icon */}
                 </button>
                 {/* Voice Input Button */}
                 {isVoiceSupported && (
