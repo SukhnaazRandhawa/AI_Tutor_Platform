@@ -1,3 +1,9 @@
 node_modules/
 dist/
-.env
+.envwav2lip_env/
+Wav2Lip/.git/
+Wav2Lip_updated/.git/
+__pycache__/
+*.pyc
+.DS_Store
+wav2lip_env/
